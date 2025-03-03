@@ -2,11 +2,12 @@
 
 ## Initial Setup
 1. Download this Git
+1. run `npm install`
 1. Navigate to main folder and run command `sf plugins link .`
 
 ## Sample Plugin Commands
 
-1. `sf jz wbook --target-org <org_alias> --objects "Account,Contact"` - Main command to run this plugin
+1. `sf jz wbook --target-org <org_alias> --e "Account,Contact"` - Main command to run this plugin. If --e is missing then it woulf try to export all objects
 1. `sf call external service` - This command make API call and provides some interesting facts about numbers
 
 ## Important Links
