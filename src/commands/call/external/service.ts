@@ -1,10 +1,8 @@
-
-
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
 import { Messages } from '@salesforce/core';
 import got from 'got';
 
-Messages.importMessagesDirectoryFromMetaUrl(import.meta.url)
+Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('sf_workbook', 'call.external.service');
 
 export type CallExternalServiceResult = {
@@ -26,7 +24,7 @@ export default class CallExternalService extends SfCommand<CallExternalServiceRe
       char: 'n',
       required: false,
     }),
-  }
+  };
 
   public async run(): Promise<CallExternalServiceResult> {
     const result = await got<CallExternalServiceResult>(
@@ -36,5 +34,5 @@ export default class CallExternalService extends SfCommand<CallExternalServiceRe
     this.log(result.text);
 
     return result;
-}
+  }
 }
