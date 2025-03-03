@@ -23,13 +23,7 @@ export type SObjectMetadata = { name: string; fields: SObjectField[] };
 export type ExportResult = void;
 
 // Centralized Excel Styling Configuration
-class ExcelStyleConfig {
-  static headerStyle = {
-    font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 14 },
-    fill: { fgColor: { rgb: '4F81BD' } },
-    alignment: { horizontal: 'center' },
-  };
-}
+ 
 
 export default class WBook extends SfCommand<ExportResult> {
   public static readonly summary = messages.getMessage('summary');
@@ -86,21 +80,16 @@ export default class WBook extends SfCommand<ExportResult> {
         // Append the rest of the data
         XLSX.utils.sheet_add_json(worksheet, fields, { origin: 'A2', skipHeader: true });
 
-        // Apply styling to headers
-        headerRow.forEach((_, colIdx) => {
-          const cellAddress = XLSX.utils.encode_cell({ r: 0, c: colIdx });
-          if (!worksheet[cellAddress]) worksheet[cellAddress] = { t: 's', v: headerRow[colIdx] };
-          worksheet[cellAddress].s = ExcelStyleConfig.headerStyle;
-        });
-
+        
+ 
         XLSX.utils.book_append_sheet(workbook, worksheet, objectName.substring(0, 31)); // Excel sheet names max 31 chars
       } catch (error) {
         if (error instanceof Error) {
-          this.log(`Skipping ${objectName} due to error: ${error.message}`);
+          this.log(`Skipping ${objectName} due to error: ${error.message}`); 
         } else {
-          this.log(`Skipping ${objectName} due to an unknown error`);
+          this.log(`Skipping ${objectName} due to an unknown error`); 
         }
-      }
+      } 
     }
 
     // Ensure Exports directory exists
