@@ -5,7 +5,8 @@
   "dependencies": {
     "@oclif/core": "^4",
     "@salesforce/core": "^8",
-    "@salesforce/sf-plugins-core": "^12"
+    "@salesforce/sf-plugins-core": "^12",
+    "got": "^14.4.6"
   },
   "devDependencies": {
     "@oclif/plugin-command-snapshot": "^5.1.9",
@@ -45,6 +46,14 @@
     "topics": {
       "hello": {
         "description": "Commands to say hello."
+      },
+      "call": {
+        "description": "description for call",
+        "subtopics": {
+          "external": {
+            "description": "description for call.external"
+          }
+        }
       }
     },
     "flexibleTaxonomy": true
