@@ -1,5 +1,9 @@
 # sf_workbook - Salesforce DX Plugin for Configuration Workbook
 
+## Known Issue
+
+1. Object name in permission set excel is coming as undefined.
+
 ## Initial Setup
 
 1. Download this Git
