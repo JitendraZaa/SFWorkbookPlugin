@@ -6,6 +6,7 @@
     "@oclif/core": "^4",
     "@salesforce/core": "^8",
     "@salesforce/sf-plugins-core": "^12",
+    "@salesforce/sobject-metadata": "^0.1.4",
     "got": "^14.4.6",
     "xlsx": "^0.18.5",
     "xlsx-style": "^0.8.13"
@@ -14,8 +15,10 @@
     "@oclif/plugin-command-snapshot": "^5.1.9",
     "@salesforce/cli-plugins-testkit": "^5.3.10",
     "@salesforce/dev-scripts": "^10",
+    "@types/jsforce": "^1.11.5",
     "@types/xlsx": "^0.0.35",
     "eslint-plugin-sf-plugin": "^1.18.6",
+    "jsforce": "^3.8.1",
     "oclif": "^4.14.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
