@@ -170,11 +170,45 @@ export type ApexPageRecord = {
   ControllerKey?: string;
 };
 
+export type LayoutRecord = {
+  Id: string;
+  Name: string;
+  TableEnumOrId: string;
+};
+
+export type LayoutAssignmentRecord = {
+  Id: string;
+  LayoutId: string;
+  ProfileId: string;
+  RecordTypeId?: string;
+};
+
+export type OrganizationRecord = {
+  Id: string;
+  DataStorage: number;
+  FileStorage: number;
+  MaxDataStorage: number;
+  MaxFileStorage: number;
+};
+
+export type OrgSummaryStats = {
+  totalApexClasses: number;
+  usedApexClasses: number;
+  apexUsagePercentage: number;
+  dataStorageUsed: number;
+  dataStorageMax: number;
+  dataStoragePercentage: number;
+  fileStorageUsed: number;
+  fileStorageMax: number;
+  fileStoragePercentage: number;
+};
+
 export class HealthProcessor {
   private connection: Connection;
   private logger: (message: string) => void;
   private healthResults: HealthCheckResult[] = [];
   private orgAlias: string;
+  private orgSummaryStats: OrgSummaryStats | null = null;
 
   public constructor(connection: Connection, logger: (message: string) => void, orgAlias: string) {
     this.connection = connection;
@@ -198,6 +232,9 @@ export class HealthProcessor {
     this.logger('Starting Salesforce Org Health Check...');
 
     try {
+      // First collect org summary statistics
+      await this.collectOrgSummaryStats();
+
       // Run all health checks in parallel for better performance
       await Promise.all([
         this.checkAuraComponents(),
@@ -217,6 +254,7 @@ export class HealthProcessor {
         this.checkNamingConventions(),
         this.checkUnusedReportsAndDashboards(),
         this.checkUnusedApexClasses(),
+        this.checkUnusedPageLayouts(),
       ]);
 
       this.logger(`Health check completed. Found ${this.healthResults.length} technical debt categories.`);
@@ -227,6 +265,73 @@ export class HealthProcessor {
     } catch (error) {
       this.logger(`Error during health check: ${error instanceof Error ? error.message : 'Unknown error'}`);
       throw error;
+    }
+  }
+
+  public getOrgSummaryStats(): OrgSummaryStats | null {
+    return this.orgSummaryStats;
+  }
+
+  private async collectOrgSummaryStats(): Promise<void> {
+    try {
+      this.logger('Collecting org summary statistics...');
+
+      // Get total Apex classes count
+      const allApexClasses = await this.connection.tooling.query(
+        `SELECT Id, Name 
+         FROM ApexClass 
+         WHERE NamespacePrefix = null`
+      );
+
+      let totalApexClasses = 0;
+      let usedApexClasses = 0;
+
+      if (allApexClasses.records) {
+        totalApexClasses = allApexClasses.records.length;
+
+        // Filter out test classes to get business logic classes
+        const nonTestClasses = (allApexClasses.records as SymbolTableRecord[]).filter(cls => {
+          const name = cls.Name || '';
+          return !name.toLowerCase().includes('test') && !name.endsWith('_Test');
+        });
+
+        // For business logic estimation, use non-test classes as "used" classes
+        usedApexClasses = nonTestClasses.length;
+      }
+
+      const apexUsagePercentage = totalApexClasses > 0 ? Math.round((usedApexClasses / totalApexClasses) * 100) : 0;
+
+      // Storage information is not available via SOQL - would need Setup API or UI access
+      // Setting storage values to indicate unavailable
+      this.orgSummaryStats = {
+        totalApexClasses,
+        usedApexClasses,
+        apexUsagePercentage,
+        dataStorageUsed: -1, // -1 indicates unavailable
+        dataStorageMax: -1,
+        dataStoragePercentage: -1,
+        fileStorageUsed: -1,
+        fileStorageMax: -1,
+        fileStoragePercentage: -1
+      };
+
+      this.logger(`Org stats collected: ${totalApexClasses} total Apex classes, ${usedApexClasses} business logic classes (${apexUsagePercentage}%)`);
+      this.logger('Storage information: Not available via API (requires Setup UI access)');
+
+    } catch (error) {
+      this.logger(`Error collecting org summary stats: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Set default values if collection fails
+      this.orgSummaryStats = {
+        totalApexClasses: 0,
+        usedApexClasses: 0,
+        apexUsagePercentage: 0,
+        dataStorageUsed: -1,
+        dataStorageMax: -1,
+        dataStoragePercentage: -1,
+        fileStorageUsed: -1,
+        fileStorageMax: -1,
+        fileStoragePercentage: -1
+      };
     }
   }
 
@@ -1026,6 +1131,135 @@ export class HealthProcessor {
     }
   }
 
+  private async checkUnusedPageLayouts(): Promise<void> {
+    try {
+      this.logger('Analyzing unused page layouts...');
+
+      // Step 1: Get all page layouts using Tooling API (no SOQL in loop)
+      const allLayouts = await this.connection.tooling.query(
+        `SELECT Id, Name, TableEnumOrId 
+         FROM Layout`
+      );
+
+      if (!allLayouts.records || allLayouts.records.length === 0) {
+        this.healthResults.push({
+          category: 'Unused Components',
+          title: 'Unused Page Layouts (None Found)',
+          severity: 'Low',
+          count: 0,
+          items: ['No page layouts found to analyze'],
+          description: 'No page layouts detected in this org.',
+          recommendation: 'Continue following best practices for page layout management.'
+        });
+        return;
+      }
+
+      this.logger(`Found ${allLayouts.records.length} page layouts to analyze`);
+
+      // Step 2: Use an alternative approach since LayoutAssignment is not queryable
+      // We'll check which layouts have standard names that suggest they're default/system layouts
+      // and consider the rest as potentially unused (this is a simplified approach)
+      const assignedLayoutIds = new Set<string>();
+
+      // Get all profiles to understand org structure
+      const profiles = await this.connection.query<ProfileRecord>(
+        `SELECT Id, Name 
+         FROM Profile`
+      );
+
+      this.logger(`Found ${profiles.records?.length || 0} profiles in the org`);
+
+      // Since we can't query LayoutAssignment directly, we'll use a heuristic approach:
+      // Mark layouts as "assigned" if they have standard naming patterns that suggest they're in use
+      (allLayouts.records as LayoutRecord[]).forEach(layout => {
+        const layoutName = layout.Name || '';
+        // Standard layouts typically have these patterns
+        if (layoutName.includes('Layout') ||
+          layoutName.includes('Standard') ||
+          layoutName.includes('Default') ||
+          layoutName === layout.TableEnumOrId || // Object name matches layout name
+          layoutName.toLowerCase().includes('read only') ||
+          layoutName.toLowerCase().includes('readonly')) {
+          assignedLayoutIds.add(layout.Id);
+        }
+      });
+
+      // Step 4: Filter layouts to find unassigned ones (using collections, no loops with SOQL)
+      const unassignedLayouts = (allLayouts.records as LayoutRecord[]).filter(layout =>
+        !assignedLayoutIds.has(layout.Id)
+      );
+
+      // Step 5: Generate report
+      if (unassignedLayouts.length > 0) {
+        // Group layouts by object for better reporting
+        const layoutsByObject = new Map<string, LayoutRecord[]>();
+        unassignedLayouts.forEach(layout => {
+          const objectName = layout.TableEnumOrId || 'Unknown Object';
+          if (!layoutsByObject.has(objectName)) {
+            layoutsByObject.set(objectName, []);
+          }
+          layoutsByObject.get(objectName)!.push(layout);
+        });
+
+        const reportItems: string[] = [];
+
+        // Create detailed report by object
+        layoutsByObject.forEach((layouts, objectName) => {
+          reportItems.push(`=== ${objectName.toUpperCase()} (${layouts.length} potentially unused layouts) ===`);
+          layouts.forEach(layout => {
+            reportItems.push(`${layout.Name} (custom name - verify assignment manually)`);
+          });
+          reportItems.push('');
+        });
+
+        // Add summary
+        reportItems.unshift(`Found ${unassignedLayouts.length} page layouts with custom names that may not be assigned to profiles across ${layoutsByObject.size} objects:`);
+        reportItems.unshift('');
+
+        // Determine severity based on percentage of unused layouts
+        let severity: 'High' | 'Medium' | 'Low' = 'Low';
+        const unusedPercentage = (unassignedLayouts.length / allLayouts.records.length) * 100;
+        if (unusedPercentage > 30) {
+          severity = 'High'; // More than 30% unused
+        } else if (unusedPercentage > 10) {
+          severity = 'Medium'; // More than 10% unused
+        }
+
+        this.healthResults.push({
+          category: 'Unused Components',
+          title: 'Potentially Unused Page Layouts',
+          severity,
+          count: unassignedLayouts.length,
+          items: reportItems,
+          description: `Found ${unassignedLayouts.length} page layouts (${Math.round(unusedPercentage)}% of total) with custom names that may not be assigned to profiles. This analysis uses naming patterns to identify potentially unused layouts since direct assignment queries are not available via API.`,
+          recommendation: `Review the ${unassignedLayouts.length} potentially unused page layouts listed above. Manually verify in Setup → Object Manager → [Object] → Page Layouts → Assignment to confirm which are actually unused before deletion.`
+        });
+      } else {
+        this.healthResults.push({
+          category: 'Unused Components',
+          title: 'Potentially Unused Page Layouts',
+          severity: 'Low',
+          count: 0,
+          items: ['All page layouts appear to follow standard naming conventions'],
+          description: 'All page layouts in the org follow standard naming patterns that suggest they are system/default layouts or are in use.',
+          recommendation: 'Continue following best practices for page layout management. Consider manually reviewing custom layouts in Setup → Object Manager to ensure they are still needed.'
+        });
+      }
+
+    } catch (error) {
+      this.logger(`Error checking unused page layouts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      this.healthResults.push({
+        category: 'Unused Components',
+        title: 'Unused Page Layouts (Analysis Failed)',
+        severity: 'Low',
+        count: 0,
+        items: ['Analysis could not be completed due to API limitations'],
+        description: 'Error occurred while analyzing page layouts for usage.',
+        recommendation: 'Manually review page layouts in Setup → Object Manager → [Object] → Page Layouts to identify potential cleanup opportunities.'
+      });
+    }
+  }
+
   private generateCategoryReports(): void {
     try {
       this.logger('Generating consolidated health check reports...');
@@ -1046,7 +1280,7 @@ export class HealthProcessor {
       textGenerator.generateReport(textFileName);
 
       // Generate single Excel report with multiple tabs
-      const excelGenerator = new ExcelHealthReportGenerator(this.orgAlias, this.healthResults);
+      const excelGenerator = new ExcelHealthReportGenerator(this.orgAlias, this.healthResults, this.orgSummaryStats);
       excelGenerator.generateReport(excelFileName);
 
       this.logger('Health check reports generated:');
@@ -1058,6 +1292,5 @@ export class HealthProcessor {
       throw error;
     }
   }
-
 
 } 

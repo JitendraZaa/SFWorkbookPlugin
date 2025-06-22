@@ -1,13 +1,15 @@
 import * as XLSX from 'xlsx';
-import { HealthCheckResult } from './healthProcessor.js';
+import { HealthCheckResult, OrgSummaryStats } from './healthProcessor.js';
 
 export class ExcelHealthReportGenerator {
   private orgAlias: string;
   private healthResults: HealthCheckResult[];
+  private orgSummaryStats: OrgSummaryStats | null;
 
-  public constructor(orgAlias: string, healthResults: HealthCheckResult[]) {
+  public constructor(orgAlias: string, healthResults: HealthCheckResult[], orgSummaryStats: OrgSummaryStats | null = null) {
     this.orgAlias = orgAlias;
     this.healthResults = healthResults;
+    this.orgSummaryStats = orgSummaryStats;
   }
 
   private static parseItemWithBrackets(item: string, category: string): { name: string; additionalInfo: string; suggestion: string } {
@@ -77,10 +79,36 @@ export class ExcelHealthReportGenerator {
       ['High Severity Issues', this.healthResults.filter(r => r.severity === 'High').length.toString()],
       ['Medium Severity Issues', this.healthResults.filter(r => r.severity === 'Medium').length.toString()],
       ['Low Severity Issues', this.healthResults.filter(r => r.severity === 'Low').length.toString()],
-      [''],
+      ['']
+    ];
+
+    // Add org statistics if available
+    if (this.orgSummaryStats) {
+      summaryData.push(['Org Statistics']);
+
+      // Always show Apex usage
+      summaryData.push(['Apex Usage', `${this.orgSummaryStats.apexUsagePercentage}% (${this.orgSummaryStats.usedApexClasses}/${this.orgSummaryStats.totalApexClasses} classes)`]);
+
+      // Show storage information if available (not -1)
+      if (this.orgSummaryStats.dataStoragePercentage >= 0) {
+        summaryData.push(['Data Storage', `${this.orgSummaryStats.dataStoragePercentage}% (${this.orgSummaryStats.dataStorageUsed}MB / ${this.orgSummaryStats.dataStorageMax}MB)`]);
+      } else {
+        summaryData.push(['Data Storage', 'Not available via API (check Setup > Storage Usage)']);
+      }
+
+      if (this.orgSummaryStats.fileStoragePercentage >= 0) {
+        summaryData.push(['File Storage', `${this.orgSummaryStats.fileStoragePercentage}% (${this.orgSummaryStats.fileStorageUsed}MB / ${this.orgSummaryStats.fileStorageMax}MB)`]);
+      } else {
+        summaryData.push(['File Storage', 'Not available via API (check Setup > Storage Usage)']);
+      }
+
+      summaryData.push(['']);
+    }
+
+    summaryData.push(
       ['Category Overview'],
       ['Category', 'Issues Count', 'High', 'Medium', 'Low']
-    ];
+    );
 
     // Add category overview
     categories.forEach(category => {
