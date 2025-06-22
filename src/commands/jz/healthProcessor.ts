@@ -1,6 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Connection } from '@salesforce/core';
+import { TextHealthReportGenerator } from './textHealthReportGenerator.js';
+import { ExcelHealthReportGenerator } from './excelHealthReportGenerator.js';
 
 export type HealthCheckResult = {
   category: string;
@@ -172,10 +174,24 @@ export class HealthProcessor {
   private connection: Connection;
   private logger: (message: string) => void;
   private healthResults: HealthCheckResult[] = [];
+  private orgAlias: string;
 
-  public constructor(connection: Connection, logger: (message: string) => void) {
+  public constructor(connection: Connection, logger: (message: string) => void, orgAlias: string) {
     this.connection = connection;
     this.logger = logger;
+    this.orgAlias = orgAlias;
+  }
+
+  private static generateTimestamp(): string {
+    const now = new Date();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const year = now.getFullYear();
+    const hours12 = now.getHours() % 12 || 12;
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    const ampm = now.getHours() >= 12 ? 'pm' : 'am';
+
+    return `${month}_${day}_${year}_${hours12}_${minutes}_${ampm}`;
   }
 
   public async performHealthCheck(): Promise<void> {
@@ -200,13 +216,13 @@ export class HealthProcessor {
         this.checkTriggerOveruse(),
         this.checkNamingConventions(),
         this.checkUnusedReportsAndDashboards(),
-        this.checkUnusedApexClasses()
+        this.checkUnusedApexClasses(),
       ]);
 
-      this.logger(`Health check completed. Found ${this.healthResults.length} categories with issues.`);
+      this.logger(`Health check completed. Found ${this.healthResults.length} technical debt categories.`);
 
-      // Generate text report
-      this.generateTextReport();
+      // Generate reports - both text and Excel for each category
+      this.generateCategoryReports();
 
     } catch (error) {
       this.logger(`Error during health check: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -223,7 +239,7 @@ export class HealthProcessor {
 
       if (auraComponents.records.length > 0) {
         this.healthResults.push({
-          category: 'Legacy Technology',
+          category: 'Aura and VF',
           title: 'Aura Components (instead of LWC)',
           severity: 'Medium',
           count: auraComponents.records.length,
@@ -267,7 +283,7 @@ export class HealthProcessor {
         const inactiveCount = uniqueProcessBuilders.length - activeCount;
 
         this.healthResults.push({
-          category: 'Legacy Automation',
+          category: 'PB and WF',
           title: 'Process Builders (should be migrated to Flows)',
           severity: 'High',
           count: uniqueProcessBuilders.length,
@@ -282,7 +298,7 @@ export class HealthProcessor {
       } else {
         // No Process Builders found
         this.healthResults.push({
-          category: 'Legacy Automation',
+          category: 'PB and WF',
           title: 'Process Builders (None Found)',
           severity: 'High',
           count: 0,
@@ -305,7 +321,7 @@ export class HealthProcessor {
 
         if (flowMetadata?.records && flowMetadata.records.length > 0) {
           this.healthResults.push({
-            category: 'Legacy Automation',
+            category: 'PB and WF',
             title: 'Potential Process Builders (Pattern-based Detection)',
             severity: 'High',
             count: flowMetadata.records.length,
@@ -315,7 +331,7 @@ export class HealthProcessor {
           });
         } else {
           this.healthResults.push({
-            category: 'Legacy Automation',
+            category: 'PB and WF',
             title: 'Process Builders (Detection Failed)',
             severity: 'High',
             count: 0,
@@ -327,7 +343,7 @@ export class HealthProcessor {
       } catch (fallbackError) {
         // Ultimate fallback to manual review
         this.healthResults.push({
-          category: 'Legacy Automation',
+          category: 'PB and WF',
           title: 'Process Builders (Manual Review Required)',
           severity: 'High',
           count: 0,
@@ -349,7 +365,7 @@ export class HealthProcessor {
 
       if (workflowRules.records && workflowRules.records.length > 0) {
         this.healthResults.push({
-          category: 'Legacy Automation',
+          category: 'PB and WF',
           title: 'Workflow Rules (legacy automation, should be replaced)',
           severity: 'High',
           count: workflowRules.records.length,
@@ -362,7 +378,7 @@ export class HealthProcessor {
       this.logger(`Error checking Workflow Rules: ${error instanceof Error ? error.message : 'Unknown error'}`);
       // Fallback to manual review if Tooling API fails
       this.healthResults.push({
-        category: 'Legacy Automation',
+        category: 'PB and WF',
         title: 'Workflow Rules (Manual Review Required)',
         severity: 'High',
         count: 0,
@@ -465,7 +481,7 @@ export class HealthProcessor {
 
       if (vfPages.records.length > 0) {
         this.healthResults.push({
-          category: 'Legacy Technology',
+          category: 'Aura and VF',
           title: 'Visualforce Pages (outdated UI technology)',
           severity: 'Medium',
           count: vfPages.records.length,
@@ -483,7 +499,7 @@ export class HealthProcessor {
     try {
       // Apex Body field cannot be filtered in queries, adding as manual review
       this.healthResults.push({
-        category: 'Code Quality Issues',
+        category: 'Code Coverage Issue',
         title: 'Hard-coded IDs in Apex/Flow',
         severity: 'High',
         count: 0, // Cannot query Body field directly
@@ -671,7 +687,7 @@ export class HealthProcessor {
 
         if (lowCoverageClasses.length > 0) {
           this.healthResults.push({
-            category: 'Code Quality Issues',
+            category: 'Code Coverage Issue',
             title: 'Low Code Coverage in Apex Tests',
             severity: 'High',
             count: lowCoverageClasses.length,
@@ -689,7 +705,7 @@ export class HealthProcessor {
       this.logger(`Error checking Low Code Coverage: ${error instanceof Error ? error.message : 'Unknown error'}`);
       // Fallback to manual review if Tooling API fails
       this.healthResults.push({
-        category: 'Code Quality Issues',
+        category: 'Code Coverage Issue',
         title: 'Low Code Coverage in Apex Tests (Manual Review Required)',
         severity: 'High',
         count: 0,
@@ -746,7 +762,7 @@ export class HealthProcessor {
 
       if (objectsWithMultipleTriggers.length > 0) {
         this.healthResults.push({
-          category: 'Code Quality Issues',
+          category: 'Code Coverage Issue',
           title: 'Overuse of Triggers (Multiple triggers per object)',
           severity: 'Medium',
           count: objectsWithMultipleTriggers.length,
@@ -779,7 +795,7 @@ export class HealthProcessor {
 
       if (poorlyNamedObjects.length > 0) {
         this.healthResults.push({
-          category: 'Code Quality Issues',
+          category: 'Code Coverage Issue',
           title: 'Lack of Documentation or Naming Conventions',
           severity: 'Low',
           count: poorlyNamedObjects.length,
@@ -850,7 +866,7 @@ export class HealthProcessor {
 
       if (!allApexClasses.records || allApexClasses.records.length === 0) {
         this.healthResults.push({
-          category: 'Code Quality',
+          category: 'Unused Apex',
           title: 'Unused Apex Classes (None Found)',
           severity: 'Low',
           count: 0,
@@ -883,7 +899,7 @@ export class HealthProcessor {
 
       if (nonTestClasses.length === 0) {
         this.healthResults.push({
-          category: 'Code Quality',
+          category: 'Unused Apex',
           title: 'Unused Apex Classes (Only Test Classes Found)',
           severity: 'Low',
           count: 0,
@@ -985,7 +1001,7 @@ export class HealthProcessor {
       }
 
       this.healthResults.push({
-        category: 'Code Quality',
+        category: 'Unused Apex',
         title: 'Unused Apex Classes',
         severity,
         count: unusedClasses.length,
@@ -999,7 +1015,7 @@ export class HealthProcessor {
     } catch (error) {
       this.logger(`Error checking unused Apex classes: ${error instanceof Error ? error.message : 'Unknown error'}`);
       this.healthResults.push({
-        category: 'Code Quality',
+        category: 'Unused Apex',
         title: 'Unused Apex Classes (Analysis Failed)',
         severity: 'Low',
         count: 0,
@@ -1010,9 +1026,9 @@ export class HealthProcessor {
     }
   }
 
-  private generateTextReport(): void {
+  private generateCategoryReports(): void {
     try {
-      this.logger('Generating text health check report...');
+      this.logger('Generating consolidated health check reports...');
 
       // Ensure Exports directory exists
       const exportDir = path.join(process.cwd(), 'Exports');
@@ -1020,95 +1036,28 @@ export class HealthProcessor {
         fs.mkdirSync(exportDir, { recursive: true });
       }
 
-      const fileName = path.join(exportDir, `Salesforce_Health_Check_${new Date().toISOString().replace(/[:.]/g, '-')}.txt`);
+      const timestamp = HealthProcessor.generateTimestamp();
+      const baseFileName = `SF_health_${this.orgAlias}_${timestamp}`;
+      const textFileName = path.join(exportDir, `${baseFileName}.txt`);
+      const excelFileName = path.join(exportDir, `${baseFileName}.xlsx`);
 
-      let reportContent = '';
+      // Generate single consolidated text report
+      const textGenerator = new TextHealthReportGenerator(this.orgAlias, this.healthResults);
+      textGenerator.generateReport(textFileName);
 
-      // Title
-      reportContent += '='.repeat(60) + '\n';
-      reportContent += '           SALESFORCE ORG HEALTH CHECK REPORT\n';
-      reportContent += '='.repeat(60) + '\n';
-      reportContent += `Generated on: ${new Date().toLocaleDateString()}\n\n`;
+      // Generate single Excel report with multiple tabs
+      const excelGenerator = new ExcelHealthReportGenerator(this.orgAlias, this.healthResults);
+      excelGenerator.generateReport(excelFileName);
 
-      // Executive Summary
-      reportContent += 'EXECUTIVE SUMMARY\n';
-      reportContent += '-'.repeat(20) + '\n';
-      reportContent += `Total Technical Debt Categories Found: ${this.healthResults.length}\n`;
+      this.logger('Health check reports generated:');
+      this.logger(`  Text: ${textFileName}`);
+      this.logger(`  Excel: ${excelFileName}`);
 
-      const highSeverityCount = this.healthResults.filter(r => r.severity === 'High').length;
-      const mediumSeverityCount = this.healthResults.filter(r => r.severity === 'Medium').length;
-      const lowSeverityCount = this.healthResults.filter(r => r.severity === 'Low').length;
-
-      reportContent += `High Severity Issues: ${highSeverityCount}\n`;
-      reportContent += `Medium Severity Issues: ${mediumSeverityCount}\n`;
-      reportContent += `Low Severity Issues: ${lowSeverityCount}\n\n`;
-
-      // Technical Debt Details
-      reportContent += 'TECHNICAL DEBT ANALYSIS\n';
-      reportContent += '-'.repeat(30) + '\n\n';
-
-      // Group results by category
-      const categories = [...new Set(this.healthResults.map(r => r.category))];
-
-      categories.forEach(category => {
-        const categoryResults = this.healthResults.filter(r => r.category === category);
-
-        reportContent += `${category.toUpperCase()}\n`;
-        reportContent += '='.repeat(category.length) + '\n\n';
-
-        categoryResults.forEach(result => {
-          reportContent += `${result.title}\n`;
-          reportContent += `Severity: ${result.severity} | Count: ${result.count}\n\n`;
-
-          reportContent += `Description: ${result.description}\n\n`;
-          reportContent += `Recommendation: ${result.recommendation}\n\n`;
-
-          if (result.items.length > 0 && result.count > 0) {
-            reportContent += 'Items Found:\n';
-            // Show ALL items in the output file (no truncation)
-            result.items.forEach(item => {
-              reportContent += `• ${item}\n`;
-            });
-            reportContent += '\n';
-          }
-
-          reportContent += '-'.repeat(50) + '\n\n';
-        });
-      });
-
-      // Priority Recommendations
-      reportContent += 'PRIORITY RECOMMENDATIONS\n';
-      reportContent += '-'.repeat(25) + '\n\n';
-
-      const highPriorityItems = this.healthResults.filter(r => r.severity === 'High');
-      if (highPriorityItems.length > 0) {
-        reportContent += 'HIGH PRIORITY (Address Immediately):\n\n';
-        highPriorityItems.forEach((item, index) => {
-          reportContent += `${index + 1}. ${item.title}\n`;
-          reportContent += `   ${item.recommendation}\n\n`;
-        });
-      }
-
-      const mediumPriorityItems = this.healthResults.filter(r => r.severity === 'Medium');
-      if (mediumPriorityItems.length > 0) {
-        reportContent += 'MEDIUM PRIORITY (Address Soon):\n\n';
-        mediumPriorityItems.forEach((item, index) => {
-          reportContent += `${index + 1}. ${item.title}\n`;
-          reportContent += `   ${item.recommendation}\n\n`;
-        });
-      }
-
-      // Footer
-      reportContent += '='.repeat(60) + '\n';
-      reportContent += 'Generated by Salesforce Health Check Tool\n';
-      reportContent += '='.repeat(60) + '\n';
-
-      fs.writeFileSync(fileName, reportContent);
-
-      this.logger(`Health check report generated: ${fileName}`);
     } catch (error) {
-      this.logger(`Error generating text report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      this.logger(`Error generating consolidated reports: ${error instanceof Error ? error.message : 'Unknown error'}`);
       throw error;
     }
   }
+
+
 } 

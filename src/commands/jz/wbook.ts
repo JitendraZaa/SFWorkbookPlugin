@@ -52,7 +52,29 @@ export default class WBook extends SfCommand<ExportResult> {
     // Handle health check if requested
     if (flags.health) {
       this.log('Performing Salesforce org health check...');
-      const healthProcessor = new HealthProcessor(connection, this.log.bind(this));
+
+      // Get the org alias from the org username
+      let orgAlias = 'unknown_org';
+
+      try {
+        const org = flags['target-org'];
+        const username = org.getUsername();
+        if (username) {
+          // If the username looks like an email, extract the part before @
+          // Otherwise, use the whole username
+          if (username.includes('@')) {
+            const parts = username.split('@');
+            orgAlias = parts[0];
+          } else {
+            orgAlias = username;
+          }
+        }
+      } catch (error) {
+        this.log(`DEBUG: Error getting org username: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+
+      this.log(`Using org alias: ${orgAlias}`);
+      const healthProcessor = new HealthProcessor(connection, this.log.bind(this), orgAlias);
       await healthProcessor.performHealthCheck();
       return;
     }

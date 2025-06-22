@@ -100,4 +100,8 @@ SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
 SELECT DurableId, DeveloperName, Label, Description, NamespacePrefix, UiType
 FROM AppDefinition WHERE NamespacePrefix != NULL
 
-             
+SELECT Id,  Name, SymbolTable FROM ApexClass WHERE Name = 'UOIIHelper'
+
+SELECT MetadataComponentName, MetadataComponentType
+FROM MetadataComponentDependency
+WHERE RefMetadataComponentId = '01p7x000007GPhcAAG'            
