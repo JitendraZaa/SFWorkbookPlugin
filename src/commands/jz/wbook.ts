@@ -5,6 +5,7 @@ import { Messages } from '@salesforce/core';
 import * as XLSX from 'xlsx';
 import { PermissionSetProcessor } from './permissionSetProcessor.js';
 import { ObjectProcessor } from './objectProcessor.js';
+import { HealthProcessor } from './healthProcessor.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('sf_workbook', 'jz.wbook');
@@ -30,6 +31,12 @@ export default class WBook extends SfCommand<ExportResult> {
       required: false,
       summary: 'List of permission sets to export'
     }),
+    'health': Flags.boolean({
+      char: 'c',
+      description: 'Perform Salesforce org health check and generate PDF report with technical debt analysis.',
+      required: false,
+      summary: 'Perform org health check'
+    }),
   };
 
   public async run(): Promise<ExportResult> {
@@ -40,6 +47,15 @@ export default class WBook extends SfCommand<ExportResult> {
     // Debug logging for flags
     this.log(`DEBUG: flags.objects = ${flags.objects ? `'${flags.objects}'` : 'undefined'}`);
     this.log(`DEBUG: flags['permission-sets'] = ${flags['permission-sets'] !== undefined ? `'${flags['permission-sets']}'` : 'undefined'}`);
+    this.log(`DEBUG: flags.health = ${flags.health ? 'true' : 'false'}`);
+
+    // Handle health check if requested
+    if (flags.health) {
+      this.log('Performing Salesforce org health check...');
+      const healthProcessor = new HealthProcessor(connection, this.log.bind(this));
+      await healthProcessor.performHealthCheck();
+      return;
+    }
 
     const workbook = XLSX.utils.book_new();
 

@@ -1,0 +1,103 @@
+SELECT Name FROM PermissionSet
+
+SELECT Field, SObjectType, PermissionsRead, PermissionsEdit 
+             FROM FieldPermissions 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet WHERE Name = 'HSI_Data_Migration_TEMP') LIMIT 20
+
+SELECT SObjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords 
+             FROM ObjectPermissions 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet WHERE Name = 'HSI_Data_Migration_TEMP') LIMIT 20
+
+
+SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
+             FROM SetupEntityAccess 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet  ) limit 100
+
+
+SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
+             FROM SetupEntityAccess 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet  )
+             AND SETUPENTITYTYPE = 'ConnectedApplication' limit 100 --NOt woring
+
+SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
+             FROM SetupEntityAccess 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet  )
+             AND SETUPENTITYTYPE = 'CustomEntityDefinition' limit 100 --Not working
+
+
+SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
+             FROM SetupEntityAccess 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet  )
+             AND SETUPENTITYTYPE = 'CustomPermission' limit 100 --notworking
+
+
+SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
+             FROM SetupEntityAccess 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet  )
+             AND SETUPENTITYTYPE = 'ExternalClientApplication' limit 100   --notworking
+
+
+SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
+             FROM SetupEntityAccess 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet  )
+             AND SETUPENTITYTYPE = 'ExternalCredentialParameter' limit 100   --notworking
+
+
+SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
+             FROM SetupEntityAccess 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet  )
+             AND SETUPENTITYTYPE = 'FlowDefinition' limit 100   --notworking
+
+SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
+             FROM SetupEntityAccess 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet  )
+             AND SETUPENTITYTYPE = 'OrgWideEmailAddress' limit 100   --notworking
+
+
+SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
+             FROM SetupEntityAccess 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet  )
+             AND SETUPENTITYTYPE = 'ServiceProvider' limit 100   --notworking
+
+
+SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
+             FROM SetupEntityAccess 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet  )
+             AND SETUPENTITYTYPE = 'StandardInvocableActionType' limit 100   --notworking
+
+SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
+             FROM SetupEntityAccess 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet  )
+             AND SETUPENTITYTYPE = 'TabSet' limit 100   --notworking
+
+SELECT Id, Name, Label
+FROM AppMenuItem WHere Id = '02u2E000000xgU8QAI'
+
+SELECT DurableId, DeveloperName, Label, Description, NamespacePrefix, UiType
+FROM AppDefinition
+WHERE Id = '02u2E000000xgU8QAI'
+
+
+SELECT Name FROM TabDefinition WHERE Id = '02u2E000000xgUEQAY'
+ 
+
+SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
+             FROM SetupEntityAccess 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet  )
+             AND SETUPENTITYTYPE = 'EmailRoutingAddress' limit 100    
+
+SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
+             FROM SetupEntityAccess 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet  )
+             AND SETUPENTITYTYPE = 'xxx' limit 100    
+
+SELECT SetupEntityId, SetupEntityType , SetupEntity.Name
+             FROM SetupEntityAccess 
+             WHERE ParentId IN (SELECT Id FROM PermissionSet  )
+             AND SETUPENTITYTYPE = 'xxxx' limit 100   
+
+
+SELECT DurableId, DeveloperName, Label, Description, NamespacePrefix, UiType
+FROM AppDefinition WHERE NamespacePrefix != NULL
+
+             
