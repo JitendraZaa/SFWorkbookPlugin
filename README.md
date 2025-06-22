@@ -2,7 +2,8 @@
 
 ## Known Issue
 
-1. Object name in permission set excel is coming as undefined.
+1. Tabset system properties shows ID if component belongs to manage Package
+1. Sometimes code hangs while creating excel, just cancel transaction and run again.
 
 ## Initial Setup
 
@@ -14,6 +15,8 @@
 ## Sample Plugin Commands
 
 1. `sf jz wbook --target-org <org_alias> -e "Account,Contact"` - Main command to run this plugin. If --e is missing then it woulf try to export all objects
+1. `sf jz wbook --target-org <org_alias> -p "<csv permission set>"` - Exports permission sets in excel for selected permissions
+1. `sf jz wbook --target-org <org_alias> -p " "` - Exports all permission sets in excel for selected permissions
 1. `sf call external service` - This command make API call and provides some interesting facts about numbers
 
 ## Important Links
