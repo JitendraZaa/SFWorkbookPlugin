@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Connection } from '@salesforce/core';
 
-export interface HealthCheckResult {
+export type HealthCheckResult = {
   category: string;
   title: string;
   severity: 'High' | 'Medium' | 'Low';
@@ -10,9 +10,9 @@ export interface HealthCheckResult {
   items: string[];
   description: string;
   recommendation: string;
-}
+};
 
-export interface ComponentRecord {
+export type ComponentRecord = {
   Id: string;
   Name?: string;
   DeveloperName?: string;
@@ -26,9 +26,9 @@ export interface ComponentRecord {
   TableEnumOrId?: string;
   SobjectType?: string;
   QualifiedApiName?: string;
-}
+};
 
-export interface FlowRecord {
+export type FlowRecord = {
   Id: string;
   MasterLabel?: string;
   Label?: string;
@@ -36,32 +36,32 @@ export interface FlowRecord {
   ProcessType: string;
   ApiVersion?: number;
   VersionNumber?: number;
-}
+};
 
-export interface FlowDefinitionRecord {
+export type FlowDefinitionRecord = {
   Id: string;
   DeveloperName: string;
   ActiveVersionId?: string;
   ManageableState?: string;
-}
+};
 
-export interface FlowRecord2 {
+export type FlowRecord2 = {
   Id: string;
   DeveloperName?: string;
   ProcessType?: string;
   Status?: string;
   MasterLabel?: string;
-}
+};
 
-export interface ApexRecord {
+export type ApexRecord = {
   Id: string;
   Name: string;
   ApiVersion: number;
   Status: string;
   Body?: string;
-}
+};
 
-export interface ValidationRuleRecord {
+export type ValidationRuleRecord = {
   Id: string;
   ValidationName: string;
   EntityDefinitionId?: string;
@@ -69,35 +69,35 @@ export interface ValidationRuleRecord {
     QualifiedApiName: string;
   };
   Active: boolean;
-}
+};
 
-export interface FieldRecord {
+export type FieldRecord = {
   Id: string;
   QualifiedApiName: string;
   EntityDefinitionId: string;
   LastReferencedDate?: string;
-}
+};
 
-export interface PermissionSetRecord {
+export type PermissionSetRecord = {
   Id: string;
   Name: string;
   Label: string;
   IsOwnedByProfile: boolean;
-}
+};
 
-export interface ProfileRecord {
+export type ProfileRecord = {
   Id: string;
   Name: string;
   UserLicense: { Name: string };
-}
+};
 
-export interface UserRecord {
+export type UserRecord = {
   Id: string;
   ProfileId: string;
   IsActive: boolean;
-}
+};
 
-export interface TestCoverageRecord {
+export type TestCoverageRecord = {
   ApexClassOrTriggerId: string;
   TestMethodName?: string;
   NumLinesCovered: number;
@@ -106,20 +106,67 @@ export interface TestCoverageRecord {
   ApexClassOrTrigger?: {
     Name: string;
   };
-}
+};
 
-export interface ReportRecord {
+export type ReportRecord = {
   Id: string;
   Name: string;
   LastRunDate?: string;
   LastViewedDate?: string;
-}
+};
 
-export interface DashboardRecord {
+export type DashboardRecord = {
   Id: string;
   Title: string;
   LastViewedDate?: string;
-}
+};
+
+export type ApexClassRecord = {
+  Id: string;
+  Name: string;
+  Body?: string;
+  ApiVersion?: number;
+  Status?: string;
+};
+
+export type SymbolTableRecord = {
+  Id: string;
+  Name: string;
+  SymbolTable?: {
+    externalReferences?: Array<{
+      name: string;
+      namespace?: string;
+    }>;
+    methods?: Array<{
+      name: string;
+      references?: Array<{
+        name: string;
+      }>;
+    }>;
+  };
+};
+
+export type MetadataComponentDependencyRecord = {
+  MetadataComponentName: string;
+  RefMetadataComponentName: string;
+  MetadataComponentType: string;
+  MetadataComponentId?: string;
+  RefMetadataComponentId?: string;
+};
+
+export type AsyncApexJobRecord = {
+  ApexClassId: string;
+  Status: string;
+  JobType: string;
+  ApexClass?: {
+    Name: string;
+  };
+};
+
+export type ApexPageRecord = {
+  Name: string;
+  ControllerKey?: string;
+};
 
 export class HealthProcessor {
   private connection: Connection;
@@ -152,7 +199,8 @@ export class HealthProcessor {
         this.checkUnusedRecordTypes(),
         this.checkTriggerOveruse(),
         this.checkNamingConventions(),
-        this.checkUnusedReportsAndDashboards()
+        this.checkUnusedReportsAndDashboards(),
+        this.checkUnusedApexClasses()
       ]);
 
       this.logger(`Health check completed. Found ${this.healthResults.length} categories with issues.`);
@@ -789,6 +837,179 @@ export class HealthProcessor {
     }
   }
 
+  private async checkUnusedApexClasses(): Promise<void> {
+    try {
+      this.logger('Analyzing unused Apex classes using Tooling API...');
+
+      // Step 1: Get all non-test Apex classes from current namespace
+      const allApexClasses = await this.connection.tooling.query(
+        `SELECT Id, Name, SymbolTable 
+         FROM ApexClass 
+         WHERE NamespacePrefix = null`
+      );
+
+      if (!allApexClasses.records || allApexClasses.records.length === 0) {
+        this.healthResults.push({
+          category: 'Code Quality',
+          title: 'Unused Apex Classes (None Found)',
+          severity: 'Low',
+          count: 0,
+          items: ['No Apex classes found to analyze'],
+          description: 'No Apex classes detected in this org.',
+          recommendation: 'Continue following best practices for Apex development.'
+        });
+        return;
+      }
+
+      // Filter out test classes based on naming conventions and SymbolTable
+      const nonTestClasses = (allApexClasses.records as SymbolTableRecord[]).filter(cls => {
+        // Basic name filtering
+        if (cls.Name.toLowerCase().includes('test') || cls.Name.endsWith('_Test')) {
+          return false;
+        }
+
+        // Check SymbolTable for @isTest annotation
+        if (cls.SymbolTable?.methods) {
+          const hasTestMethods = cls.SymbolTable.methods.some(method =>
+            method.name && method.name.toLowerCase().includes('test')
+          );
+          if (hasTestMethods) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+      if (nonTestClasses.length === 0) {
+        this.healthResults.push({
+          category: 'Code Quality',
+          title: 'Unused Apex Classes (Only Test Classes Found)',
+          severity: 'Low',
+          count: 0,
+          items: ['Only test classes found - no business logic classes to analyze'],
+          description: 'All detected Apex classes appear to be test classes.',
+          recommendation: 'Good! Continue following best practices for Apex development.'
+        });
+        return;
+      }
+
+      this.logger(`Found ${nonTestClasses.length} non-test Apex classes to analyze`);
+
+      // Step 2: Check each class for usage via MetadataComponentDependency in chunks
+      const unusedClasses: string[] = [];
+      const analysisErrors: string[] = [];
+
+      // Process classes in chunks to optimize API calls
+      const chunkSize = 10;
+      const totalChunks = Math.ceil(nonTestClasses.length / chunkSize);
+
+      // eslint-disable-next-line no-await-in-loop
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        const startIndex = chunkIndex * chunkSize;
+        const endIndex = Math.min(startIndex + chunkSize, nonTestClasses.length);
+        const chunk = nonTestClasses.slice(startIndex, endIndex);
+
+        this.logger(`Processing chunk ${chunkIndex + 1}/${totalChunks}: Analyzing ${chunk.length} classes (${chunk.map(c => c.Name).join(', ')})`);
+
+        try {
+          // Build query for this chunk of class IDs
+          const classIds = chunk.map(cls => cls.Id);
+          // eslint-disable-next-line no-await-in-loop
+          const dependencyResult = await this.connection.tooling.query(
+            `SELECT MetadataComponentName, MetadataComponentType, RefMetadataComponentId 
+             FROM MetadataComponentDependency 
+             WHERE RefMetadataComponentId IN ('${classIds.join("','")}')`
+          );
+
+          // Create a map of class ID to dependencies
+          const dependencyMap = new Map<string, MetadataComponentDependencyRecord[]>();
+          if (dependencyResult.records) {
+            (dependencyResult.records as MetadataComponentDependencyRecord[]).forEach(dep => {
+              if (!dependencyMap.has(dep.RefMetadataComponentId!)) {
+                dependencyMap.set(dep.RefMetadataComponentId!, []);
+              }
+              dependencyMap.get(dep.RefMetadataComponentId!)!.push(dep);
+            });
+          }
+
+          // Process each class in this chunk - only add to unusedClasses if no dependencies found
+          chunk.forEach(apexClass => {
+            const dependencies = dependencyMap.get(apexClass.Id);
+
+            if (!dependencies || dependencies.length === 0) {
+              // Class appears unused - add to unused list
+              unusedClasses.push(apexClass.Name);
+            }
+            // If class has dependencies, we don't add it to any list (skip it)
+          });
+
+          this.logger(`Chunk ${chunkIndex + 1}/${totalChunks} completed: Found ${dependencyResult.records?.length || 0} dependencies`);
+
+        } catch (error) {
+          this.logger(`Error processing chunk ${chunkIndex + 1}/${totalChunks}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          // Add all classes in this chunk to errors
+          chunk.forEach(apexClass => {
+            analysisErrors.push(`${apexClass.Name}: Chunk processing failed - ${error instanceof Error ? error.message : 'Unknown error'}`);
+          });
+        }
+      }
+
+      // Step 3: Generate report focusing only on unused classes
+      const totalAnalyzed = nonTestClasses.length;
+      const totalUnused = unusedClasses.length;
+      const totalErrors = analysisErrors.length;
+      const totalUsed = totalAnalyzed - totalUnused - totalErrors;
+
+      const reportItems: string[] = [];
+
+      if (unusedClasses.length > 0) {
+        reportItems.push(`=== UNUSED APEX CLASSES (${unusedClasses.length}) ===`);
+        reportItems.push(...unusedClasses.map(className => `${className} (no metadata dependencies found)`));
+        reportItems.push('');
+      } else {
+        reportItems.push('No unused Apex classes found - all classes appear to be referenced by other components.');
+      }
+
+      if (analysisErrors.length > 0) {
+        reportItems.push(`=== ANALYSIS ERRORS (${analysisErrors.length}) ===`);
+        reportItems.push(...analysisErrors);
+      }
+
+      // Determine severity based on results
+      let severity: 'High' | 'Medium' | 'Low' = 'Low';
+      if (unusedClasses.length > totalAnalyzed * 0.3) {
+        severity = 'High'; // More than 30% unused
+      } else if (unusedClasses.length > 0) {
+        severity = 'Medium'; // Some unused classes found
+      }
+
+      this.healthResults.push({
+        category: 'Code Quality',
+        title: 'Unused Apex Classes',
+        severity,
+        count: unusedClasses.length,
+        items: reportItems,
+        description: `Analyzed ${totalAnalyzed} non-test Apex classes. Found ${totalUnused} potentially unused classes and ${totalUsed} actively used classes${totalErrors > 0 ? ` (${totalErrors} analysis errors)` : ''}.`,
+        recommendation: unusedClasses.length > 0
+          ? `Review the ${unusedClasses.length} unused classes listed above. These classes have no metadata dependencies, meaning they are not referenced by Flows, LWC, Aura, VF pages, or other Apex classes. Verify manually before deletion as some may be used via dynamic instantiation or external calls.`
+          : 'Excellent! All Apex classes appear to be actively used by other metadata components.'
+      });
+
+    } catch (error) {
+      this.logger(`Error checking unused Apex classes: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      this.healthResults.push({
+        category: 'Code Quality',
+        title: 'Unused Apex Classes (Analysis Failed)',
+        severity: 'Low',
+        count: 0,
+        items: ['Analysis could not be completed'],
+        description: 'Error occurred while analyzing Apex classes for usage.',
+        recommendation: 'Manually review Apex classes in Setup → Apex Classes for potential cleanup opportunities.'
+      });
+    }
+  }
+
   private generateTextReport(): void {
     try {
       this.logger('Generating text health check report...');
@@ -844,13 +1065,10 @@ export class HealthProcessor {
 
           if (result.items.length > 0 && result.count > 0) {
             reportContent += 'Items Found:\n';
-            const itemsToShow = result.items.slice(0, 10); // Limit to first 10 items
-            itemsToShow.forEach(item => {
+            // Show ALL items in the output file (no truncation)
+            result.items.forEach(item => {
               reportContent += `• ${item}\n`;
             });
-            if (result.items.length > 10) {
-              reportContent += `... and ${result.items.length - 10} more items\n`;
-            }
             reportContent += '\n';
           }
 
