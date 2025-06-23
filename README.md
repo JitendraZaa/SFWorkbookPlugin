@@ -8,10 +8,9 @@
 ## Initial Setup
 
 1. Download this Git
-1. run `npm install`
+1. run `yarn install`
 1. Navigate to main folder and run command `sf plugins link .`
 1. After every change in code, make sure to run `yarn run build`
-1. If dependencies are not installed, run `yarn install`
 
 ## Sample Plugin Commands
 

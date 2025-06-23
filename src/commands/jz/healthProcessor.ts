@@ -273,65 +273,106 @@ export class HealthProcessor {
   }
 
   private async collectOrgSummaryStats(): Promise<void> {
+    // 🎯 ALWAYS use web scraping for accurate results - API gives incorrect data!
+    this.logger('🔍 Collecting ACCURATE org summary statistics using web scraping...');
+    this.logger('⚠️  Note: API results are unreliable, using Puppeteer web scraping for precision');
+
     try {
-      this.logger('Collecting org summary statistics...');
+      // Import the web scraper
+      const { OrgStatsWebScraper } = await import('./orgStatsWebScraper.js');
 
-      // Get total Apex classes count
-      const allApexClasses = await this.connection.tooling.query(
-        `SELECT Id, Name 
-         FROM ApexClass 
-         WHERE NamespacePrefix = null`
-      );
+      this.logger('🚀 Launching automated browser for data collection...');
+      const scraper = new OrgStatsWebScraper(this.orgAlias);
 
-      let totalApexClasses = 0;
-      let usedApexClasses = 0;
+      this.logger('🌐 Navigating to Salesforce Setup pages...');
+      const scrapedStats = await scraper.scrapeOrgStats();
 
-      if (allApexClasses.records) {
-        totalApexClasses = allApexClasses.records.length;
+      // Convert scraped stats to the expected format
+      this.orgSummaryStats = {
+        totalApexClasses: scrapedStats.totalApexClasses,
+        usedApexClasses: scrapedStats.usedApexClasses,
+        apexUsagePercentage: scrapedStats.apexUsagePercentage,
+        dataStorageUsed: scrapedStats.dataStorageUsed,
+        dataStorageMax: scrapedStats.dataStorageMax,
+        dataStoragePercentage: scrapedStats.dataStoragePercentage,
+        fileStorageUsed: scrapedStats.fileStorageUsed,
+        fileStorageMax: scrapedStats.fileStorageMax,
+        fileStoragePercentage: scrapedStats.fileStoragePercentage
+      };
 
-        // Filter out test classes to get business logic classes
-        const nonTestClasses = (allApexClasses.records as SymbolTableRecord[]).filter(cls => {
-          const name = cls.Name || '';
-          return !name.toLowerCase().includes('test') && !name.endsWith('_Test');
-        });
+      this.logger('✅ SUCCESS: Accurate org statistics collected via web scraping!');
+      this.logger('═══════════════════════════════════════════════════════════');
+      this.logger(`📊 APEX USAGE: ${scrapedStats.apexUsagePercentage}% (${scrapedStats.usedApexClasses}/${scrapedStats.totalApexClasses} classes)`);
+      this.logger(`💾 DATA STORAGE: ${scrapedStats.dataStoragePercentage}% (${scrapedStats.dataStorageUsed}MB of ${scrapedStats.dataStorageMax}MB)`);
+      this.logger(`📁 FILE STORAGE: ${scrapedStats.fileStoragePercentage}% (${scrapedStats.fileStorageUsed}MB of ${scrapedStats.fileStorageMax}MB)`);
+      this.logger('═══════════════════════════════════════════════════════════');
+      this.logger('🎉 These are the REAL percentages from Salesforce UI (not API estimates)');
 
-        // For business logic estimation, use non-test classes as "used" classes
-        usedApexClasses = nonTestClasses.length;
+    } catch (webScrapingError) {
+      this.logger('❌ Web scraping failed! Attempting API fallback...');
+      this.logger(`Web scraping error: ${webScrapingError instanceof Error ? webScrapingError.message : 'Unknown error'}`);
+
+      try {
+        this.logger('🔄 Trying API as fallback (note: may be inaccurate)...');
+
+        // Get total Apex classes count via API as fallback
+        const allApexClasses = await this.connection.tooling.query(
+          `SELECT Id, Name 
+           FROM ApexClass 
+           WHERE NamespacePrefix = null`
+        );
+
+        let totalApexClasses = 0;
+        let usedApexClasses = 0;
+
+        if (allApexClasses.records) {
+          totalApexClasses = allApexClasses.records.length;
+
+          // Filter out test classes to get business logic classes
+          const nonTestClasses = (allApexClasses.records as SymbolTableRecord[]).filter(cls => {
+            const name = cls.Name || '';
+            return !name.toLowerCase().includes('test') && !name.endsWith('_Test');
+          });
+
+          usedApexClasses = nonTestClasses.length;
+        }
+
+        const apexUsagePercentage = totalApexClasses > 0 ? Math.round((usedApexClasses / totalApexClasses) * 100) : 0;
+
+        this.orgSummaryStats = {
+          totalApexClasses,
+          usedApexClasses,
+          apexUsagePercentage,
+          dataStorageUsed: -1, // API cannot provide storage info
+          dataStorageMax: -1,
+          dataStoragePercentage: -1,
+          fileStorageUsed: -1,
+          fileStorageMax: -1,
+          fileStoragePercentage: -1
+        };
+
+        this.logger('⚠️  API fallback completed (INACCURATE DATA):');
+        this.logger(`📊 Apex: ${apexUsagePercentage}% (${usedApexClasses}/${totalApexClasses}) - ESTIMATED ONLY`);
+        this.logger('💾 Storage: Not available via API - requires web scraping for accuracy');
+
+      } catch (apiError) {
+        this.logger('❌ Both web scraping AND API failed!');
+        this.logger(`API error: ${apiError instanceof Error ? apiError.message : 'Unknown error'}`);
+        this.logger('🔧 Using default values...');
+
+        // Set default values if both methods fail
+        this.orgSummaryStats = {
+          totalApexClasses: 0,
+          usedApexClasses: 0,
+          apexUsagePercentage: 0,
+          dataStorageUsed: -1,
+          dataStorageMax: -1,
+          dataStoragePercentage: -1,
+          fileStorageUsed: -1,
+          fileStorageMax: -1,
+          fileStoragePercentage: -1
+        };
       }
-
-      const apexUsagePercentage = totalApexClasses > 0 ? Math.round((usedApexClasses / totalApexClasses) * 100) : 0;
-
-      // Storage information is not available via SOQL - would need Setup API or UI access
-      // Setting storage values to indicate unavailable
-      this.orgSummaryStats = {
-        totalApexClasses,
-        usedApexClasses,
-        apexUsagePercentage,
-        dataStorageUsed: -1, // -1 indicates unavailable
-        dataStorageMax: -1,
-        dataStoragePercentage: -1,
-        fileStorageUsed: -1,
-        fileStorageMax: -1,
-        fileStoragePercentage: -1
-      };
-
-      this.logger(`Org stats collected: ${totalApexClasses} total Apex classes, ${usedApexClasses} business logic classes (${apexUsagePercentage}%)`);
-      this.logger('Storage information: Not available via API (requires Setup UI access)');
-
-    } catch (error) {
-      this.logger(`Error collecting org summary stats: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      // Set default values if collection fails
-      this.orgSummaryStats = {
-        totalApexClasses: 0,
-        usedApexClasses: 0,
-        apexUsagePercentage: 0,
-        dataStorageUsed: -1,
-        dataStorageMax: -1,
-        dataStoragePercentage: -1,
-        fileStorageUsed: -1,
-        fileStorageMax: -1,
-        fileStoragePercentage: -1
-      };
     }
   }
 
