@@ -1,13 +1,15 @@
 import * as fs from 'node:fs';
-import { HealthCheckResult } from './healthProcessor.js';
+import { HealthCheckResult, OrgSummaryStats } from './healthProcessor.js';
 
 export class TextHealthReportGenerator {
   private orgAlias: string;
   private healthResults: HealthCheckResult[];
+  private orgSummaryStats: OrgSummaryStats | null;
 
-  public constructor(orgAlias: string, healthResults: HealthCheckResult[]) {
+  public constructor(orgAlias: string, healthResults: HealthCheckResult[], orgSummaryStats: OrgSummaryStats | null = null) {
     this.orgAlias = orgAlias;
     this.healthResults = healthResults;
+    this.orgSummaryStats = orgSummaryStats;
   }
 
   public generateReport(fileName: string): void {
@@ -33,6 +35,40 @@ export class TextHealthReportGenerator {
     reportContent += `High Severity Issues: ${highSeverityCount}\n`;
     reportContent += `Medium Severity Issues: ${mediumSeverityCount}\n`;
     reportContent += `Low Severity Issues: ${lowSeverityCount}\n\n`;
+
+    // Org Statistics Section
+    if (this.orgSummaryStats) {
+      reportContent += 'ORG STATISTICS\n';
+      reportContent += '-'.repeat(15) + '\n';
+
+      // Always show Apex usage
+      reportContent += `Apex Usage: ${this.orgSummaryStats.apexUsagePercentage}% (${this.orgSummaryStats.usedApexClasses}/${this.orgSummaryStats.totalApexClasses} classes)\n`;
+
+      // Show storage information if available (not -1)
+      if (this.orgSummaryStats.dataStoragePercentage >= 0) {
+        reportContent += `Data Storage: ${this.orgSummaryStats.dataStoragePercentage}% (${this.orgSummaryStats.dataStorageUsed}MB / ${this.orgSummaryStats.dataStorageMax}MB)\n`;
+      } else {
+        reportContent += 'Data Storage: Not available via API (check Setup > Storage Usage)\n';
+      }
+
+      if (this.orgSummaryStats.fileStoragePercentage >= 0) {
+        reportContent += `File Storage: ${this.orgSummaryStats.fileStoragePercentage}% (${this.orgSummaryStats.fileStorageUsed}MB / ${this.orgSummaryStats.fileStorageMax}MB)\n`;
+      } else {
+        reportContent += 'File Storage: Not available via API (check Setup > Storage Usage)\n';
+      }
+
+      // Add Big Object Storage if available
+      if (this.orgSummaryStats.bigObjectStorageMax && this.orgSummaryStats.bigObjectStorageMax > 0) {
+        reportContent += `Big Object Storage: ${this.orgSummaryStats.bigObjectStoragePercentage}% (${this.orgSummaryStats.bigObjectStorageUsed} / ${this.orgSummaryStats.bigObjectStorageMax} records)\n`;
+      }
+
+      // Add Top Storage Objects summary
+      if (this.orgSummaryStats.topStorageObjects.length > 0) {
+        reportContent += `Top Storage Objects: ${this.orgSummaryStats.topStorageObjects.length} items found\n`;
+      }
+
+      reportContent += '\n';
+    }
 
     // Technical Debt Details by Category
     reportContent += 'TECHNICAL DEBT ANALYSIS BY CATEGORY\n';
@@ -62,6 +98,32 @@ export class TextHealthReportGenerator {
         reportContent += '-'.repeat(50) + '\n\n';
       });
     });
+
+    // Top Storage Objects Section
+    if (this.orgSummaryStats && this.orgSummaryStats.topStorageObjects.length > 0) {
+      reportContent += 'TOP 20 HIGH STORAGE OBJECTS\n';
+      reportContent += '-'.repeat(30) + '\n\n';
+
+      reportContent += 'Record Type'.padEnd(35) + 'Record Count'.padEnd(15) + 'Storage'.padEnd(15) + 'Percent\n';
+      reportContent += '='.repeat(80) + '\n';
+
+      this.orgSummaryStats.topStorageObjects.forEach(obj => {
+        reportContent += obj.recordType.padEnd(35) +
+          obj.recordCount.toString().padEnd(15) +
+          obj.storage.padEnd(15) +
+          `${obj.percent}%\n`;
+      });
+
+      // Add summary statistics
+      const totalRecords = this.orgSummaryStats.topStorageObjects.reduce((sum, obj) => sum + obj.recordCount, 0);
+      const totalStorageMB = this.orgSummaryStats.topStorageObjects.reduce((sum, obj) => sum + obj.storageInMB, 0);
+      const totalPercent = this.orgSummaryStats.topStorageObjects.reduce((sum, obj) => sum + obj.percent, 0);
+
+      reportContent += '-'.repeat(80) + '\n';
+      reportContent += `Total Records: ${totalRecords.toLocaleString()}\n`;
+      reportContent += `Total Storage: ${totalStorageMB.toFixed(2)} MB\n`;
+      reportContent += `Total Percentage: ${totalPercent.toFixed(1)}%\n\n`;
+    }
 
     // Priority Recommendations
     reportContent += 'PRIORITY RECOMMENDATIONS\n';

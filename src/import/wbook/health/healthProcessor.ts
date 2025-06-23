@@ -191,6 +191,14 @@ export type OrganizationRecord = {
   MaxFileStorage: number;
 };
 
+export type StorageObject = {
+  recordType: string;
+  recordCount: number;
+  storage: string;
+  storageInMB: number;
+  percent: number;
+};
+
 export type OrgSummaryStats = {
   totalApexClasses: number;
   usedApexClasses: number;
@@ -201,6 +209,10 @@ export type OrgSummaryStats = {
   fileStorageUsed: number;
   fileStorageMax: number;
   fileStoragePercentage: number;
+  bigObjectStorageUsed?: number;
+  bigObjectStorageMax?: number;
+  bigObjectStoragePercentage?: number;
+  topStorageObjects: StorageObject[];
 };
 
 export class HealthProcessor {
@@ -297,7 +309,11 @@ export class HealthProcessor {
         dataStoragePercentage: scrapedStats.dataStoragePercentage,
         fileStorageUsed: scrapedStats.fileStorageUsed,
         fileStorageMax: scrapedStats.fileStorageMax,
-        fileStoragePercentage: scrapedStats.fileStoragePercentage
+        fileStoragePercentage: scrapedStats.fileStoragePercentage,
+        bigObjectStorageUsed: scrapedStats.bigObjectStorageUsed,
+        bigObjectStorageMax: scrapedStats.bigObjectStorageMax,
+        bigObjectStoragePercentage: scrapedStats.bigObjectStoragePercentage,
+        topStorageObjects: scrapedStats.topStorageObjects
       };
 
       this.logger('✅ SUCCESS: Accurate org statistics collected via web scraping!');
@@ -305,6 +321,10 @@ export class HealthProcessor {
       this.logger(`📊 APEX USAGE: ${scrapedStats.apexUsagePercentage}% (${scrapedStats.usedApexClasses}/${scrapedStats.totalApexClasses} classes)`);
       this.logger(`💾 DATA STORAGE: ${scrapedStats.dataStoragePercentage}% (${scrapedStats.dataStorageUsed}MB of ${scrapedStats.dataStorageMax}MB)`);
       this.logger(`📁 FILE STORAGE: ${scrapedStats.fileStoragePercentage}% (${scrapedStats.fileStorageUsed}MB of ${scrapedStats.fileStorageMax}MB)`);
+      if (scrapedStats.bigObjectStorageMax && scrapedStats.bigObjectStorageMax > 0) {
+        this.logger(`🗂️  BIG OBJECT STORAGE: ${scrapedStats.bigObjectStoragePercentage}% (${scrapedStats.bigObjectStorageUsed}/${scrapedStats.bigObjectStorageMax} records)`);
+      }
+      this.logger(`📋 TOP STORAGE OBJECTS: ${scrapedStats.topStorageObjects.length} items found`);
       this.logger('═══════════════════════════════════════════════════════════');
       this.logger('🎉 These are the REAL percentages from Salesforce UI (not API estimates)');
 
@@ -348,7 +368,11 @@ export class HealthProcessor {
           dataStoragePercentage: -1,
           fileStorageUsed: -1,
           fileStorageMax: -1,
-          fileStoragePercentage: -1
+          fileStoragePercentage: -1,
+          bigObjectStorageUsed: 0,
+          bigObjectStorageMax: 0,
+          bigObjectStoragePercentage: 0,
+          topStorageObjects: []
         };
 
         this.logger('⚠️  API fallback completed (INACCURATE DATA):');
@@ -370,7 +394,11 @@ export class HealthProcessor {
           dataStoragePercentage: -1,
           fileStorageUsed: -1,
           fileStorageMax: -1,
-          fileStoragePercentage: -1
+          fileStoragePercentage: -1,
+          bigObjectStorageUsed: 0,
+          bigObjectStorageMax: 0,
+          bigObjectStoragePercentage: 0,
+          topStorageObjects: []
         };
       }
     }
@@ -1317,7 +1345,7 @@ export class HealthProcessor {
       const excelFileName = path.join(exportDir, `${baseFileName}.xlsx`);
 
       // Generate single consolidated text report
-      const textGenerator = new TextHealthReportGenerator(this.orgAlias, this.healthResults);
+      const textGenerator = new TextHealthReportGenerator(this.orgAlias, this.healthResults, this.orgSummaryStats);
       textGenerator.generateReport(textFileName);
 
       // Generate single Excel report with multiple tabs

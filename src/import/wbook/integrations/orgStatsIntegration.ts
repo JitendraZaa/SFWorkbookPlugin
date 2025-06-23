@@ -30,7 +30,11 @@ export class OrgStatsIntegration {
       dataStorageMax: scrapedStats.dataStorageMax,
       fileStoragePercentage: scrapedStats.fileStoragePercentage,
       fileStorageUsed: scrapedStats.fileStorageUsed,
-      fileStorageMax: scrapedStats.fileStorageMax
+      fileStorageMax: scrapedStats.fileStorageMax,
+      bigObjectStorageUsed: scrapedStats.bigObjectStorageUsed,
+      bigObjectStorageMax: scrapedStats.bigObjectStorageMax,
+      bigObjectStoragePercentage: scrapedStats.bigObjectStoragePercentage,
+      topStorageObjects: scrapedStats.topStorageObjects
     };
 
     console.log('Converted org stats:', orgSummaryStats);
@@ -65,6 +69,10 @@ export class OrgStatsIntegration {
       console.log(`- Apex Usage: ${accurateOrgStats.apexUsagePercentage}% (${accurateOrgStats.usedApexClasses}/${accurateOrgStats.totalApexClasses} classes)`);
       console.log(`- Data Storage: ${accurateOrgStats.dataStoragePercentage}% (${accurateOrgStats.dataStorageUsed}MB / ${accurateOrgStats.dataStorageMax}MB)`);
       console.log(`- File Storage: ${accurateOrgStats.fileStoragePercentage}% (${accurateOrgStats.fileStorageUsed}MB / ${accurateOrgStats.fileStorageMax}MB)`);
+      if (accurateOrgStats.bigObjectStorageMax && accurateOrgStats.bigObjectStorageMax > 0) {
+        console.log(`- Big Object Storage: ${accurateOrgStats.bigObjectStoragePercentage}% (${accurateOrgStats.bigObjectStorageUsed} / ${accurateOrgStats.bigObjectStorageMax} records)`);
+      }
+      console.log(`- Top Storage Objects: ${accurateOrgStats.topStorageObjects.length} items found`);
 
     } catch (error) {
       console.error('Error generating health report with accurate stats:', error);
@@ -99,6 +107,8 @@ export class OrgStatsIntegration {
         apexClasses: `${stats.usedApexClasses}/${stats.totalApexClasses}`,
         dataStorage: `${stats.dataStoragePercentage}% (${stats.dataStorageUsed}MB/${stats.dataStorageMax}MB)`,
         fileStorage: `${stats.fileStoragePercentage}% (${stats.fileStorageUsed}MB/${stats.fileStorageMax}MB)`,
+        bigObjectStorage: stats.bigObjectStorageMax ? `${stats.bigObjectStoragePercentage}% (${stats.bigObjectStorageUsed}/${stats.bigObjectStorageMax} records)` : 'Not available',
+        topStorageObjects: `${stats.topStorageObjects.length} items`,
         scrapedAt: stats.scrapedAt.toISOString()
       });
 

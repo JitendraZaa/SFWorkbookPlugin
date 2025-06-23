@@ -3,6 +3,14 @@ import puppeteer, { Browser, Page } from 'puppeteer';
 
 /* eslint-disable no-console, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-argument, complexity, @typescript-eslint/require-await, @typescript-eslint/prefer-optional-chain, unicorn/numeric-separators-style, radix, import/no-extraneous-dependencies, @typescript-eslint/no-redundant-type-constituents, @typescript-eslint/await-thenable */
 
+export type StorageObject = {
+  recordType: string;
+  recordCount: number;
+  storage: string;
+  storageInMB: number;
+  percent: number;
+};
+
 export type ScrapedOrgStats = {
   apexUsagePercentage: number;
   usedApexClasses: number;
@@ -13,6 +21,10 @@ export type ScrapedOrgStats = {
   fileStoragePercentage: number;
   fileStorageUsed: number;
   fileStorageMax: number;
+  bigObjectStorageUsed?: number;
+  bigObjectStorageMax?: number;
+  bigObjectStoragePercentage?: number;
+  topStorageObjects: StorageObject[];
   scrapedAt: Date;
 };
 
@@ -20,6 +32,7 @@ export class OrgStatsWebScraper {
   private orgAlias: string;
   private browser: Browser | null = null;
   private page: Page | null = null;
+  private orgId: string | null = null;
 
   public constructor(orgAlias: string) {
     this.orgAlias = orgAlias;
@@ -28,6 +41,10 @@ export class OrgStatsWebScraper {
   public async scrapeOrgStats(): Promise<ScrapedOrgStats> {
     try {
       console.log(`Starting web scraping for org: ${this.orgAlias}`);
+
+      // First, get the Org ID for direct navigation
+      this.orgId = await this.getOrgId();
+      console.log(`Got Org ID: ${this.orgId}`);
 
       const loginUrl = await this.getLoginUrl();
       console.log(`Got login URL: ${loginUrl}`);
@@ -41,10 +58,8 @@ export class OrgStatsWebScraper {
       const baseUrl = this.page!.url().split('/lightning')[0];
       // Use Salesforce Classic URL to bypass cross-domain cookie issues
       const apexClassesUrl = `${baseUrl}/01p?appLayout=setup&noS1Redirect=true`;
-      console.log(`Direct Apex URL (Classic): ${apexClassesUrl}`);
-      console.log('⏰ Using 120-second timeout for Apex Classes page...');
 
-      await this.page!.goto(apexClassesUrl, { waitUntil: 'networkidle2', timeout: 120000 });
+      await this.navigateAndWaitForPage(apexClassesUrl, 'Apex Classes', 300000, 15000);
 
       const apexStats = await this.scrapeApexUsageDirectly();
       const storageStats = await this.scrapeStorageUsage();
@@ -63,6 +78,22 @@ export class OrgStatsWebScraper {
       throw error;
     } finally {
       await this.cleanup();
+    }
+  }
+
+  private async getOrgId(): Promise<string> {
+    try {
+      const command = `sf org display --target-org ${this.orgAlias} --json`;
+      const result = execSync(command, { encoding: 'utf-8', timeout: 30000 });
+      const jsonResult = JSON.parse(result);
+
+      if (jsonResult?.status === 0 && jsonResult?.result?.id) {
+        return jsonResult.result.id;
+      } else {
+        throw new Error(`Failed to get Org ID: ${result}`);
+      }
+    } catch (error) {
+      throw new Error(`Error getting Org ID: ${String(error)}`);
     }
   }
 
@@ -119,28 +150,156 @@ export class OrgStatsWebScraper {
     await this.page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
   }
 
-  private async navigateToSalesforce(loginUrl: string): Promise<void> {
+  /**
+   * Reusable method to navigate to a page and wait for it to load with polling
+   *
+   * @param url - The URL to navigate to
+   * @param pageName - Human-readable name for logging
+   * @param maxWaitTimeMs - Maximum time to wait (default: 5 minutes)
+   * @param pollIntervalMs - How often to check (default: 15 seconds)
+   */
+  // eslint-disable-next-line no-await-in-loop, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return
+  private async navigateAndWaitForPage(
+    url: string,
+    pageName: string,
+    maxWaitTimeMs: number = 300000, // 5 minutes
+    pollIntervalMs: number = 15000   // 15 seconds
+  ): Promise<void> {
     if (!this.page) throw new Error('Page not initialized');
 
-    console.log('Navigating to Salesforce...');
-    console.log('⏰ Using 120-second timeout for initial login...');
-    await this.page.goto(loginUrl, { waitUntil: 'networkidle2', timeout: 120000 });
+    console.log(`🌐 Navigating to ${pageName}...`);
+    console.log(`📍 URL: ${url}`);
+    console.log(`⏳ Will wait up to ${maxWaitTimeMs / 1000} seconds with polling every ${pollIntervalMs / 1000} seconds`);
+
+    // Try initial navigation with reasonable timeout, then fall back to polling
+    console.log('🚀 Starting initial navigation (timeout: 120 seconds)...');
+    try {
+      await this.page.goto(url, { waitUntil: 'networkidle2', timeout: 120000 });
+      console.log('✅ Initial navigation completed successfully');
+    } catch (navigationError) {
+      console.log('⚠️  Initial navigation timed out, trying with domcontentloaded...');
+      try {
+        await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        console.log('✅ Basic navigation completed');
+      } catch (fallbackError) {
+        console.log('⚠️  Navigation failed, but continuing with polling to check page state...');
+      }
+    }
+
+    console.log(`🔄 Now polling every ${pollIntervalMs / 1000} seconds for up to ${maxWaitTimeMs / 1000} seconds to ensure ${pageName} is ready...`);
+
+    const startTime = Date.now();
+    let attempts = 0;
+
+    while (Date.now() - startTime < maxWaitTimeMs) {
+      attempts++;
+      const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
+      const remainingSeconds = Math.round((maxWaitTimeMs - (Date.now() - startTime)) / 1000);
+
+      console.log(`🔍 ${pageName} - Attempt ${attempts} | Elapsed: ${elapsedSeconds}s | Remaining: ${remainingSeconds}s`);
+      console.log(`🔎 Checking if ${pageName} is ready for interaction...`);
+
+      // Check if page is ready based on page type
+      // eslint-disable-next-line no-await-in-loop
+      const isReady = await this.checkPageReadiness(pageName);
+
+      if (isReady) {
+        console.log(`✅ ${pageName} loaded successfully after ${elapsedSeconds} seconds (${attempts} attempts)`);
+        return;
+      }
+
+      // Wait before next poll
+      console.log(`⏱️  ${pageName} not ready yet, waiting ${pollIntervalMs / 1000} seconds before next check...`);
+      console.log(`⏰ Next check will be attempt ${attempts + 1} in ${pollIntervalMs / 1000} seconds...`);
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+
+    // If we get here, we've timed out
+    const totalSeconds = Math.round(maxWaitTimeMs / 1000);
+    console.log(`⚠️  ${pageName} did not load within ${totalSeconds} seconds, proceeding anyway...`);
+  }
+
+  /**
+   * Check if a specific page type is ready for interaction
+   */
+  private async checkPageReadiness(pageName: string): Promise<boolean> {
+    if (!this.page) return false;
+
+    try {
+      switch (pageName.toLowerCase()) {
+        case 'salesforce login':
+        case 'initial salesforce':
+        case 'salesforce': {
+          // Check for Salesforce-specific elements
+          const salesforceElements = await this.page.evaluate(() => {
+            // Look for common Salesforce UI elements
+            const hasSetupLink = document.querySelector('a[href*="setup"]') !== null;
+            const hasAppLauncher = document.querySelector('.slds-icon-waffle') !== null ||
+              document.querySelector('[data-aura-class*="forceAppLauncher"]') !== null;
+            const hasUserMenu = document.querySelector('.profileTrigger') !== null ||
+              document.querySelector('[data-aura-class*="oneUserProfileCardTrigger"]') !== null;
+            const hasClassicUI = document.querySelector('.setupTab') !== null ||
+              document.querySelector('#setupLink') !== null;
+            const hasBodyContent = Boolean(document.body?.textContent && document.body.textContent.trim().length > 100);
+
+            return (hasSetupLink || hasAppLauncher || hasUserMenu || hasClassicUI) && hasBodyContent;
+          });
+          return salesforceElements;
+        }
+
+        case 'apex classes':
+        case 'apex usage':
+        case 'apex page': {
+          // Check for Apex-specific elements
+          const apexElements = await this.page.evaluate(() => {
+            const hasApexText = document.body.textContent?.toLowerCase().includes('apex') ?? false;
+            const hasClassesText = document.body.textContent?.toLowerCase().includes('classes') ?? false;
+            const hasPercentText = document.body.textContent?.includes('%') ?? false;
+            const hasUsageText = document.body.textContent?.toLowerCase().includes('used') ?? false;
+
+            return hasApexText && (hasClassesText ?? hasPercentText ?? hasUsageText);
+          });
+          return apexElements;
+        }
+
+        case 'storage usage':
+        case 'storage page':
+        case 'org storage': {
+          // Check for Storage-specific elements
+          const storageElements = await this.page.evaluate(() => {
+            const hasStorageText = document.body.textContent?.toLowerCase().includes('storage') ?? false;
+            const hasDataStorage = document.body.textContent?.toLowerCase().includes('data storage') ?? false;
+            const hasFileStorage = document.body.textContent?.toLowerCase().includes('file storage') ?? false;
+            const hasTables = document.querySelectorAll('table').length > 0;
+            const hasPercentText = document.body.textContent?.includes('%') ?? false;
+
+            return hasStorageText && (hasDataStorage ?? hasFileStorage) && hasTables && hasPercentText;
+          });
+          return storageElements;
+        }
+
+        default: {
+          // Generic check - just ensure page has loaded
+          const hasContent = await this.page.evaluate(() =>
+            Boolean(document.body?.textContent && document.body.textContent.trim().length > 100)
+          );
+          return hasContent;
+        }
+      }
+    } catch (error) {
+      console.log(`🚨 Error checking page readiness for ${pageName}:`, error);
+      return false;
+    }
+  }
+
+  private async navigateToSalesforce(loginUrl: string): Promise<void> {
+    await this.navigateAndWaitForPage(loginUrl, 'Salesforce Login', 300000, 15000);
   }
 
   private async waitForSalesforceLoad(): Promise<void> {
     if (!this.page) throw new Error('Page not initialized');
-
-    console.log('Waiting for Salesforce to load...');
-
-    try {
-      await this.page.waitForSelector('div.slds-context-bar, #AppBodyHeader', { timeout: 30000 });
-      // Use setTimeout instead of deprecated waitForTimeout
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      console.log('Salesforce loaded successfully');
-    } catch (error) {
-      console.log('Standard selectors not found, trying alternative approach...');
-      await new Promise(resolve => setTimeout(resolve, 10000));
-    }
+    console.log('✅ Initial Salesforce navigation completed');
   }
 
   private async scrapeApexUsageDirectly(): Promise<{ apexUsagePercentage: number; usedApexClasses: number; totalApexClasses: number }> {
@@ -501,24 +660,24 @@ export class OrgStatsWebScraper {
     fileStoragePercentage: number;
     fileStorageUsed: number;
     fileStorageMax: number;
+    bigObjectStorageUsed?: number;
+    bigObjectStorageMax?: number;
+    bigObjectStoragePercentage?: number;
+    topStorageObjects: StorageObject[];
   }> {
     if (!this.page) throw new Error('Page not initialized');
+    if (!this.orgId) throw new Error('Org ID not available');
 
-    console.log('Scraping storage usage...');
+    console.log('🏛️  Scraping storage usage using Salesforce Classic direct URL...');
 
     try {
-      // Navigate to System Overview page as you specified
-      const baseUrl = this.page.url().split('/lightning')[0];
-      const systemOverviewUrl = `${baseUrl}/lightning/setup/SystemOverview/home`;
+      // Use the direct Classic URL for storage usage as you suggested
+      const baseUrl = this.page.url().split('/lightning')[0].split('/01p')[0];
+      const storageUrl = `${baseUrl}/setup/org/orgstorageusage.jsp?id=${this.orgId}&setupid=CompanyResourceDisk`;
 
-      console.log(`Navigating to System Overview: ${systemOverviewUrl}`);
-      await this.page.goto(systemOverviewUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await this.navigateAndWaitForPage(storageUrl, 'Org Storage', 300000, 15000);
 
-      console.log('Looking for Data Storage section...');
-
-      // Wait for the page to load and look for the data storage section
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      console.log('📋 Extracting storage data from Classic storage usage page...');
 
       const storageStats = await this.page.evaluate(() => {
         const result = {
@@ -527,109 +686,173 @@ export class OrgStatsWebScraper {
           dataStorageMax: 0,
           fileStoragePercentage: 0,
           fileStorageUsed: 0,
-          fileStorageMax: 0
+          fileStorageMax: 0,
+          bigObjectStorageUsed: 0,
+          bigObjectStorageMax: 0,
+          bigObjectStoragePercentage: 0,
+          topStorageObjects: [] as Array<{
+            recordType: string;
+            recordCount: number;
+            storage: string;
+            storageInMB: number;
+            percent: number;
+          }>
         };
 
-        // Look for the storage information on the System Overview page
-        const allText = document.body.textContent ?? '';
-        console.log('Page text preview:', allText.substring(0, 500));
+        // Helper function to convert storage values to MB
+        const convertToMB = (value: string): number => {
+          const numMatch = value.match(/(\d+(?:,\d+)*(?:\.\d+)?)/);
+          if (!numMatch) return 0;
 
-        // Look for data storage section
-        const dataStorageRegex = /DATA STORAGE.*?(\d+(?:\.\d+)?)\s*MB.*?\(Approx\)/i;
-        const dataMatch = allText.match(dataStorageRegex);
+          const num = parseFloat(numMatch[1].replace(/,/g, ''));
+          if (value.includes('TB')) return num * 1024 * 1024;
+          if (value.includes('GB')) return num * 1024;
+          if (value.includes('MB')) return num;
+          if (value.includes('KB')) return num / 1024;
+          if (value.includes('B') && !value.includes('TB') && !value.includes('GB') && !value.includes('MB') && !value.includes('KB')) return num / (1024 * 1024);
+          return num; // Assume MB if no unit
+        };
 
-        if (dataMatch) {
-          result.dataStorageUsed = parseFloat(dataMatch[1]);
-          console.log(`Found data storage: ${result.dataStorageUsed} MB`);
-        }
+        console.log('📄 Parsing Classic storage page HTML structure...');
 
-        // Look for storage percentage and limits
-        const lines = allText.split('\n').map((line: string) => line.trim()).filter((line: string) => line.length > 0);
+        // Look for storage tables in the Classic UI based on your HTML examples
+        const tables = document.querySelectorAll('table');
 
-        for (const line of lines) {
-          // Look for patterns like "997.9 MB (Approx.)"
-          if (line.includes('MB') && line.includes('Approx')) {
-            const mbMatch = line.match(/(\d+(?:\.\d+)?)\s*MB/);
-            if (mbMatch) {
-              result.dataStorageUsed = parseFloat(mbMatch[1]);
+        for (const table of tables) {
+          const rows = table.querySelectorAll('tr.dataRow');
+
+          if (rows.length > 0) {
+            console.log(`📊 Found table with ${rows.length} data rows`);
+
+            // Check if this is the storage summary table or storage objects table
+            const headers = table.querySelectorAll('th');
+            const headerText = Array.from(headers).map(h => h.textContent?.trim() ?? '').join(' ').toLowerCase();
+
+            const isStorageObjectsTable = headerText.includes('record type') && headerText.includes('record count') && headerText.includes('storage') && headerText.includes('percent');
+            const isStorageSummaryTable = !isStorageObjectsTable && rows.length <= 10; // Storage summary typically has few rows
+
+            if (isStorageObjectsTable) {
+              console.log('📋 Found storage objects breakdown table');
+            } else if (isStorageSummaryTable) {
+              console.log('📊 Found storage summary table');
+            }
+
+            for (const row of rows) {
+              const cells = row.querySelectorAll('td, th');
+              if (cells.length >= 3) {
+                const rowTypeCell = cells[0];
+                const rowType = rowTypeCell.textContent?.trim() ?? '';
+
+                if (isStorageSummaryTable) {
+                  // Parse storage summary rows like your HTML examples
+                  if (rowType.toLowerCase().includes('data storage')) {
+                    console.log(`📊 Processing Data Storage row: ${rowType}`);
+
+                    // Based on your HTML: [Type, Max, Used, Percentage]
+                    if (cells.length >= 4) {
+                      const maxCell = cells[1].textContent?.trim() ?? '';
+                      const usedCell = cells[2].textContent?.trim() ?? '';
+                      const percentCell = cells[3].textContent?.trim() ?? '';
+
+                      result.dataStorageMax = convertToMB(maxCell);
+                      result.dataStorageUsed = convertToMB(usedCell);
+
+                      const percentMatch = percentCell.match(/(\d+(?:\.\d+)?)%/);
+                      if (percentMatch) {
+                        result.dataStoragePercentage = parseFloat(percentMatch[1]);
+                      }
+
+                      console.log(`📊 Data Storage: ${result.dataStorageUsed}MB / ${result.dataStorageMax}MB (${result.dataStoragePercentage}%)`);
+                    }
+                  } else if (rowType.toLowerCase().includes('file storage')) {
+                    console.log(`📊 Processing File Storage row: ${rowType}`);
+
+                    // Based on your HTML: [Type, Max, Used, Percentage] - File Storage: 138.5 TB, 159.9 MB, 0%
+                    if (cells.length >= 4) {
+                      const maxCell = cells[1].textContent?.trim() ?? '';
+                      const usedCell = cells[2].textContent?.trim() ?? '';
+                      const percentCell = cells[3].textContent?.trim() ?? '';
+
+                      result.fileStorageMax = convertToMB(maxCell);
+                      result.fileStorageUsed = convertToMB(usedCell);
+
+                      const percentMatch = percentCell.match(/(\d+(?:\.\d+)?)%/);
+                      if (percentMatch) {
+                        result.fileStoragePercentage = parseFloat(percentMatch[1]);
+                      }
+
+                      console.log(`📊 File Storage: ${result.fileStorageUsed}MB / ${result.fileStorageMax}MB (${result.fileStoragePercentage}%)`);
+                    }
+                  } else if (rowType.toLowerCase().includes('big object storage')) {
+                    console.log(`📊 Processing Big Object Storage row: ${rowType}`);
+
+                    // Based on your HTML: [Type, Max, Used, Percentage] - Big Object Storage: 1,000,000, 0, 0%
+                    if (cells.length >= 4) {
+                      const maxCell = cells[1].textContent?.trim() ?? '';
+                      const usedCell = cells[2].textContent?.trim() ?? '';
+                      const percentCell = cells[3].textContent?.trim() ?? '';
+
+                      // Big Object Storage is in records, not MB
+                      const maxMatch = maxCell.match(/(\d+(?:,\d+)*)/);
+                      const usedMatch = usedCell.match(/(\d+(?:,\d+)*)/);
+
+                      if (maxMatch) result.bigObjectStorageMax = parseInt(maxMatch[1].replace(/,/g, ''));
+                      if (usedMatch) result.bigObjectStorageUsed = parseInt(usedMatch[1].replace(/,/g, ''));
+
+                      const percentMatch = percentCell.match(/(\d+(?:\.\d+)?)%/);
+                      if (percentMatch) {
+                        result.bigObjectStoragePercentage = parseFloat(percentMatch[1]);
+                      }
+
+                      console.log(`📊 Big Object Storage: ${result.bigObjectStorageUsed} / ${result.bigObjectStorageMax} records (${result.bigObjectStoragePercentage}%)`);
+                    }
+                  }
+                } else if (isStorageObjectsTable && result.topStorageObjects.length < 20) {
+                  // Parse storage objects breakdown based on your HTML table
+                  if (cells.length >= 4) {
+                    const recordType = rowType;
+                    const recordCountText = cells[1].textContent?.trim() ?? '';
+                    const storageText = cells[2].textContent?.trim() ?? '';
+                    const percentText = cells[3].textContent?.trim() ?? '';
+
+                    const recordCountMatch = recordCountText.match(/(\d+(?:,\d+)*)/);
+                    const percentMatch = percentText.match(/(\d+(?:\.\d+)?)%/);
+
+                    if (recordCountMatch && percentMatch) {
+                      const storageObject = {
+                        recordType,
+                        recordCount: parseInt(recordCountMatch[1].replace(/,/g, '')),
+                        storage: storageText,
+                        storageInMB: convertToMB(storageText),
+                        percent: parseFloat(percentMatch[1])
+                      };
+
+                      result.topStorageObjects.push(storageObject);
+                      console.log(`📋 Storage Object: ${recordType} - ${storageObject.recordCount} records, ${storageText} (${storageObject.percent}%)`);
+                    }
+                  }
+                }
+              }
             }
           }
-
-          // Look for usage percentages
-          if (line.includes('%') && (line.includes('USAGE') || line.includes('usage'))) {
-            const percentMatch = line.match(/(\d+(?:\.\d+)?)%/);
-            if (percentMatch) {
-              result.dataStoragePercentage = parseFloat(percentMatch[1]);
-            }
-          }
         }
+
+
 
         return result;
       });
 
-      console.log('Storage usage scraped from System Overview:', storageStats);
+      console.log('🎯 Storage usage extracted from Classic page:', storageStats);
 
-      // Try to click on Data Storage link if found
-      try {
-        console.log('Looking for Data Storage clickable link...');
+      // Calculate missing values if we have partial data
+      if (storageStats.dataStorageUsed > 0 && storageStats.dataStorageMax > 0 && storageStats.dataStoragePercentage === 0) {
+        storageStats.dataStoragePercentage = Math.round((storageStats.dataStorageUsed / storageStats.dataStorageMax) * 100 * 100) / 100;
+        console.log(`📊 Calculated data storage percentage: ${storageStats.dataStoragePercentage}%`);
+      }
 
-        // Look for clickable data storage elements using CSS selector
-        const dataStorageClickable = await this.page.$$('a');
-        let foundDataStorageLink = false;
-
-        // eslint-disable-next-line no-await-in-loop
-        for (const link of dataStorageClickable) {
-          // eslint-disable-next-line no-await-in-loop
-          const linkText = await this.page.evaluate(el => el.textContent, link);
-          if (linkText && (linkText.includes('MB') || linkText.includes('Data Storage'))) {
-            console.log('Found Data Storage link, clicking...');
-            // eslint-disable-next-line no-await-in-loop
-            await link.click();
-            // eslint-disable-next-line no-await-in-loop
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            foundDataStorageLink = true;
-            break;
-          }
-        }
-
-        if (foundDataStorageLink) {
-
-          // After clicking, scrape more detailed storage info
-          const detailedStats = await this.page.evaluate(() => {
-            const detailed = {
-              dataStoragePercentage: 0,
-              dataStorageUsed: 0,
-              dataStorageMax: 0,
-              fileStoragePercentage: 0,
-              fileStorageUsed: 0,
-              fileStorageMax: 0
-            };
-
-            const allText = document.body.textContent ?? '';
-            console.log('Detailed storage page text preview:', allText.substring(0, 500));
-
-            // Look for more detailed storage information
-            const percentMatches = allText.match(/(\d+(?:\.\d+)?)%/g);
-            const mbMatches = allText.match(/(\d+(?:,\d+)*(?:\.\d+)?)\s*MB/g);
-
-            if (percentMatches && percentMatches.length > 0) {
-              detailed.dataStoragePercentage = parseFloat(percentMatches[0].replace('%', ''));
-            }
-
-            if (mbMatches && mbMatches.length >= 2) {
-              detailed.dataStorageUsed = parseFloat(mbMatches[0].replace(/[,MB]/g, ''));
-              detailed.dataStorageMax = parseFloat(mbMatches[1].replace(/[,MB]/g, ''));
-            }
-
-            return detailed;
-          });
-
-          // Merge detailed stats with initial stats
-          Object.assign(storageStats, detailedStats);
-          console.log('Updated storage stats after clicking:', storageStats);
-        }
-      } catch (clickError) {
-        console.log('Could not click Data Storage link:', clickError);
+      if (storageStats.fileStorageUsed > 0 && storageStats.fileStorageMax > 0 && storageStats.fileStoragePercentage === 0) {
+        storageStats.fileStoragePercentage = Math.round((storageStats.fileStorageUsed / storageStats.fileStorageMax) * 100 * 100) / 100;
+        console.log(`📊 Calculated file storage percentage: ${storageStats.fileStoragePercentage}%`);
       }
 
       return storageStats;
@@ -642,7 +865,11 @@ export class OrgStatsWebScraper {
         dataStorageMax: 0,
         fileStoragePercentage: -1,
         fileStorageUsed: 0,
-        fileStorageMax: 0
+        fileStorageMax: 0,
+        bigObjectStorageUsed: 0,
+        bigObjectStorageMax: 0,
+        bigObjectStoragePercentage: 0,
+        topStorageObjects: []
       };
     }
   }

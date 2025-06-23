@@ -65,6 +65,11 @@ export class ExcelHealthReportGenerator {
       this.createCategorySheet(workbook, category);
     });
 
+    // Create Top Storage Objects sheet if data is available
+    if (this.orgSummaryStats && this.orgSummaryStats.topStorageObjects.length > 0) {
+      this.createTopStorageObjectsSheet(workbook);
+    }
+
     XLSX.writeFile(workbook, fileName);
   }
 
@@ -100,6 +105,11 @@ export class ExcelHealthReportGenerator {
         summaryData.push(['File Storage', `${this.orgSummaryStats.fileStoragePercentage}% (${this.orgSummaryStats.fileStorageUsed}MB / ${this.orgSummaryStats.fileStorageMax}MB)`]);
       } else {
         summaryData.push(['File Storage', 'Not available via API (check Setup > Storage Usage)']);
+      }
+
+      // Add Big Object Storage if available
+      if (this.orgSummaryStats.bigObjectStorageMax && this.orgSummaryStats.bigObjectStorageMax > 0) {
+        summaryData.push(['Big Object Storage', `${this.orgSummaryStats.bigObjectStoragePercentage}% (${this.orgSummaryStats.bigObjectStorageUsed} / ${this.orgSummaryStats.bigObjectStorageMax} records)`]);
       }
 
       summaryData.push(['']);
@@ -190,6 +200,44 @@ export class ExcelHealthReportGenerator {
     // Create safe sheet name (max 31 chars, no special characters)
     const sheetName = category.substring(0, 31).replace(/[\\/:?*[\]]/g, '_');
     XLSX.utils.book_append_sheet(workbook, categorySheet, sheetName);
+  }
+
+  private createTopStorageObjectsSheet(workbook: XLSX.WorkBook): void {
+    if (!this.orgSummaryStats?.topStorageObjects.length) {
+      return;
+    }
+
+    const storageData = [
+      ['Top 20 High Storage Objects'],
+      [`Org Alias: ${this.orgAlias}`],
+      [`Generated on: ${new Date().toLocaleDateString()}`],
+      [''],
+      ['Record Type', 'Record Count', 'Storage', 'Storage (MB)', 'Percent']
+    ];
+
+    // Add storage objects data
+    this.orgSummaryStats.topStorageObjects.forEach(obj => {
+      storageData.push([
+        obj.recordType,
+        obj.recordCount.toString(),
+        obj.storage,
+        obj.storageInMB.toFixed(2),
+        `${obj.percent}%`
+      ]);
+    });
+
+    // Add summary statistics
+    storageData.push(['']);
+    storageData.push(['Summary Statistics']);
+    const totalRecords = this.orgSummaryStats.topStorageObjects.reduce((sum, obj) => sum + obj.recordCount, 0);
+    const totalStorageMB = this.orgSummaryStats.topStorageObjects.reduce((sum, obj) => sum + obj.storageInMB, 0);
+    const totalPercent = this.orgSummaryStats.topStorageObjects.reduce((sum, obj) => sum + obj.percent, 0);
+
+    storageData.push(['Total Records', totalRecords.toString(), '', totalStorageMB.toFixed(2), `${totalPercent.toFixed(1)}%`]);
+    storageData.push(['Average per Object', Math.round(totalRecords / this.orgSummaryStats.topStorageObjects.length).toString(), '', (totalStorageMB / this.orgSummaryStats.topStorageObjects.length).toFixed(2), `${(totalPercent / this.orgSummaryStats.topStorageObjects.length).toFixed(1)}%`]);
+
+    const storageSheet = XLSX.utils.aoa_to_sheet(storageData);
+    XLSX.utils.book_append_sheet(workbook, storageSheet, 'Top Storage Objects');
   }
 
 } 
