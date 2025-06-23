@@ -11,6 +11,7 @@
 1. run `npm install`
 1. Navigate to main folder and run command `sf plugins link .`
 1. After every change in code, make sure to run `npm run build`
+1. If dependencies are not installed, run `npm install`
 
 ## Sample Plugin Commands
 
@@ -19,6 +20,10 @@
 1. `sf jz wbook --target-org <org_alias> -p "<csv permission set>"` - Exports permission sets in excel for selected permissions
 1. `sf jz wbook --target-org <org_alias> -p " "` - Exports all permission sets in excel for selected permissions
 1. `sf call external service` - This command make API call and provides some interesting facts about numbers
+
+## Run Salesforce Code Analyzer
+
+`sf code-analyzer run --output-file "codeAnalyzer/results.csv"`
 
 ## Important Links
 
