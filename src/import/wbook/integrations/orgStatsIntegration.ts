@@ -1,6 +1,6 @@
+import { ExcelHealthReportGenerator } from '../health/excelHealthReportGenerator.js';
+import { HealthCheckResult, OrgSummaryStats } from '../health/healthProcessor.js';
 import { OrgStatsWebScraper, ScrapedOrgStats } from './orgStatsWebScraper.js';
-import { ExcelHealthReportGenerator } from './excelHealthReportGenerator.js';
-import { HealthCheckResult, OrgSummaryStats } from './healthProcessor.js';
 
 /* eslint-disable no-console */
 

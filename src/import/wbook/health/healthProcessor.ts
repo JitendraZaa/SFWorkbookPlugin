@@ -275,11 +275,11 @@ export class HealthProcessor {
   private async collectOrgSummaryStats(): Promise<void> {
     // 🎯 ALWAYS use web scraping for accurate results - API gives incorrect data!
     this.logger('🔍 Collecting ACCURATE org summary statistics using web scraping...');
-    this.logger('⚠️  Note: API results are unreliable, using Puppeteer web scraping for precision');
+    // this.logger('⚠️  Note: API results are unreliable, using Puppeteer web scraping for precision');
 
     try {
       // Import the web scraper
-      const { OrgStatsWebScraper } = await import('./orgStatsWebScraper.js');
+      const { OrgStatsWebScraper } = await import('../integrations/orgStatsWebScraper.js');
 
       this.logger('🚀 Launching automated browser for data collection...');
       const scraper = new OrgStatsWebScraper(this.orgAlias);
@@ -1072,7 +1072,7 @@ export class HealthProcessor {
         const endIndex = Math.min(startIndex + chunkSize, nonTestClasses.length);
         const chunk = nonTestClasses.slice(startIndex, endIndex);
 
-        this.logger(`Processing chunk ${chunkIndex + 1}/${totalChunks}: Analyzing ${chunk.length} classes (${chunk.map(c => c.Name).join(', ')})`);
+        // this.logger(`Processing chunk ${chunkIndex + 1}/${totalChunks}: Analyzing ${chunk.length} classes (${chunk.map(c => c.Name).join(', ')})`);
 
         try {
           // Build query for this chunk of class IDs

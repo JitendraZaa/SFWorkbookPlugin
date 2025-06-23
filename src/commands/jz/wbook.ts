@@ -3,9 +3,9 @@ import * as path from 'node:path';
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
 import { Messages } from '@salesforce/core';
 import * as XLSX from 'xlsx';
-import { PermissionSetProcessor } from './permissionSetProcessor.js';
-import { ObjectProcessor } from './objectProcessor.js';
-import { HealthProcessor } from './healthProcessor.js';
+import { PermissionSetProcessor } from '../../import/wbook/permissionsets/permissionSetProcessor.js';
+import { ObjectProcessor } from '../../import/wbook/objects/objectProcessor.js';
+import { HealthProcessor } from '../../import/wbook/health/healthProcessor.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('sf_workbook', 'jz.wbook');
