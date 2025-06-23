@@ -10,8 +10,8 @@
 1. Download this Git
 1. run `npm install`
 1. Navigate to main folder and run command `sf plugins link .`
-1. After every change in code, make sure to run `npm run build`
-1. If dependencies are not installed, run `npm install`
+1. After every change in code, make sure to run `yarn run build`
+1. If dependencies are not installed, run `yarn install`
 
 ## Sample Plugin Commands
 
@@ -35,9 +35,58 @@
 1. Remove Husky checks before git commit , else we would not be able to commit code in git `rm -rf .husky/`
 1. If you get some error on dependencies etc, run below command to clear cache and install node plugins again
 
+## Yarn Commands (Recommended)
+
+This project uses **Yarn** as the package manager for better performance and consistency. Use these commands instead of npm equivalents:
+
+### **Build Commands:**
+
+```bash
+# Main build command (compiles TypeScript + runs lint)
+yarn build
+
+# Just compile TypeScript
+yarn compile
+
+# Run linter only
+yarn lint
+
+# Run tests
+yarn test
 ```
-yarn add got
-rm -rf node_modules package-lock.json
-npm cache clean --force
-npm install
+
+### **Development Commands:**
+
+```bash
+# Install dependencies
+yarn install    # or just: yarn
+
+# Clean build artifacts
+yarn clean
+yarn clean-all
+
+# Format code
+yarn format
+
+# Watch mode (auto-compile on file changes)
+yarn compile --watch
 ```
+
+### **Migration from npm:**
+
+| **npm command**   | **Yarn equivalent**      |
+| ----------------- | ------------------------ |
+| `npm install`     | `yarn` or `yarn install` |
+| `npm run build`   | `yarn build` ✨          |
+| `npm run compile` | `yarn compile` ✨        |
+| `npm run test`    | `yarn test` ✨           |
+| `npm run lint`    | `yarn lint` ✨           |
+
+### **Why Yarn?**
+
+- **Faster installs** (parallel downloads)
+- **Shorter commands** (`yarn build` vs `npm run build`)
+- **Better caching** and dependency resolution
+- **No mixed package manager warnings**
+
+**Note:** This project has been cleaned to use only Yarn. The `package-lock.json` has been removed to prevent conflicts with `yarn.lock`.
