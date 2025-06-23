@@ -36,6 +36,26 @@ export class TextHealthReportGenerator {
     reportContent += `Medium Severity Issues: ${mediumSeverityCount}\n`;
     reportContent += `Low Severity Issues: ${lowSeverityCount}\n\n`;
 
+    // Add Category Overview section to match Excel report
+    reportContent += 'CATEGORY OVERVIEW\n';
+    reportContent += '-'.repeat(18) + '\n';
+    reportContent += 'Category'.padEnd(25) + 'Issues'.padEnd(8) + 'High'.padEnd(6) + 'Medium'.padEnd(8) + 'Low\n';
+    reportContent += '='.repeat(55) + '\n';
+
+    categories.forEach(category => {
+      const categoryResults = this.healthResults.filter(r => r.category === category);
+      const highCount = categoryResults.filter(r => r.severity === 'High').length;
+      const mediumCount = categoryResults.filter(r => r.severity === 'Medium').length;
+      const lowCount = categoryResults.filter(r => r.severity === 'Low').length;
+
+      reportContent += category.padEnd(25) +
+        categoryResults.length.toString().padEnd(8) +
+        highCount.toString().padEnd(6) +
+        mediumCount.toString().padEnd(8) +
+        lowCount.toString() + '\n';
+    });
+    reportContent += '\n';
+
     // Org Statistics Section
     if (this.orgSummaryStats) {
       reportContent += 'ORG STATISTICS\n';
@@ -69,6 +89,25 @@ export class TextHealthReportGenerator {
 
       reportContent += '\n';
     }
+
+    // Add Detailed Issue Summary section to match Excel report
+    reportContent += 'DETAILED ISSUE SUMMARY BY CATEGORY\n';
+    reportContent += '-'.repeat(38) + '\n';
+    reportContent += 'Category'.padEnd(20) + 'Issue Title'.padEnd(35) + 'Severity'.padEnd(10) + 'Count\n';
+    reportContent += '='.repeat(80) + '\n';
+
+    categories.forEach(category => {
+      const categoryResults = this.healthResults.filter(r => r.category === category);
+      categoryResults.forEach(result => {
+        // Truncate title if too long to match Excel format
+        const truncatedTitle = result.title.length > 32 ? result.title.substring(0, 29) + '...' : result.title;
+        reportContent += category.padEnd(20) +
+          truncatedTitle.padEnd(35) +
+          result.severity.padEnd(10) +
+          result.count.toString() + '\n';
+      });
+    });
+    reportContent += '\n';
 
     // Technical Debt Details by Category
     reportContent += 'TECHNICAL DEBT ANALYSIS BY CATEGORY\n';
@@ -114,15 +153,17 @@ export class TextHealthReportGenerator {
           `${obj.percent}%\n`;
       });
 
-      // Add summary statistics
+      // Add summary statistics to match Excel report exactly
       const totalRecords = this.orgSummaryStats.topStorageObjects.reduce((sum, obj) => sum + obj.recordCount, 0);
       const totalStorageMB = this.orgSummaryStats.topStorageObjects.reduce((sum, obj) => sum + obj.storageInMB, 0);
       const totalPercent = this.orgSummaryStats.topStorageObjects.reduce((sum, obj) => sum + obj.percent, 0);
 
       reportContent += '-'.repeat(80) + '\n';
+      reportContent += 'SUMMARY STATISTICS\n';
       reportContent += `Total Records: ${totalRecords.toLocaleString()}\n`;
       reportContent += `Total Storage: ${totalStorageMB.toFixed(2)} MB\n`;
-      reportContent += `Total Percentage: ${totalPercent.toFixed(1)}%\n\n`;
+      reportContent += `Total Percentage: ${totalPercent.toFixed(1)}%\n`;
+      reportContent += `Average per Object: ${Math.round(totalRecords / this.orgSummaryStats.topStorageObjects.length).toLocaleString()} records, ${(totalStorageMB / this.orgSummaryStats.topStorageObjects.length).toFixed(2)} MB, ${(totalPercent / this.orgSummaryStats.topStorageObjects.length).toFixed(1)}%\n\n`;
     }
 
     // Priority Recommendations

@@ -176,13 +176,20 @@ export class OrgStatsWebScraper {
     try {
       await this.page.goto(url, { waitUntil: 'networkidle2', timeout: 120000 });
       console.log('✅ Initial navigation completed successfully');
+
+      // Wait a bit longer for dynamic content to load
+      await new Promise(resolve => setTimeout(resolve, 3000));
     } catch (navigationError) {
       console.log('⚠️  Initial navigation timed out, trying with domcontentloaded...');
       try {
         await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
         console.log('✅ Basic navigation completed');
+
+        // Wait longer for dynamic content when using fallback
+        await new Promise(resolve => setTimeout(resolve, 5000));
       } catch (fallbackError) {
         console.log('⚠️  Navigation failed, but continuing with polling to check page state...');
+        console.log('🔄 Will rely on polling mechanism to detect when page is ready...');
       }
     }
 
@@ -226,13 +233,53 @@ export class OrgStatsWebScraper {
   private async checkPageReadiness(pageName: string): Promise<boolean> {
     if (!this.page) return false;
 
+    // Check if page is still valid (not closed/destroyed)
+    try {
+      await this.page.url(); // This will throw if page is destroyed
+    } catch (error) {
+      console.log(`🚨 Page appears to be destroyed, cannot check readiness for ${pageName}`);
+      return false;
+    }
+
+    // Helper function to safely evaluate JavaScript with retry logic
+    const safeEvaluate = async <T>(evaluateFunction: () => T, maxRetries: number = 3): Promise<T> => {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          return await this.page!.evaluate(evaluateFunction);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+
+          // Check if it's an execution context destroyed error
+          if (errorMessage.includes('Execution context was destroyed') ||
+            errorMessage.includes('Cannot find context')) {
+            console.log(`⚠️  Execution context destroyed (attempt ${attempt}/${maxRetries}), waiting 2 seconds before retry...`);
+
+            if (attempt < maxRetries) {
+              // eslint-disable-next-line no-await-in-loop
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              continue;
+            } else {
+              console.log(`❌ Failed to evaluate after ${maxRetries} attempts, giving up`);
+              throw error;
+            }
+          } else {
+            // For other errors, don't retry
+            throw error;
+          }
+        }
+      }
+      // This should never be reached due to the loop logic, but TypeScript needs it
+      throw new Error('Unexpected end of retry loop');
+    };
+
     try {
       switch (pageName.toLowerCase()) {
         case 'salesforce login':
         case 'initial salesforce':
         case 'salesforce': {
           // Check for Salesforce-specific elements
-          const salesforceElements = await this.page.evaluate(() => {
+          const salesforceElements = await safeEvaluate(() => {
             // Look for common Salesforce UI elements
             const hasSetupLink = document.querySelector('a[href*="setup"]') !== null;
             const hasAppLauncher = document.querySelector('.slds-icon-waffle') !== null ||
@@ -252,7 +299,7 @@ export class OrgStatsWebScraper {
         case 'apex usage':
         case 'apex page': {
           // Check for Apex-specific elements
-          const apexElements = await this.page.evaluate(() => {
+          const apexElements = await safeEvaluate(() => {
             const hasApexText = document.body.textContent?.toLowerCase().includes('apex') ?? false;
             const hasClassesText = document.body.textContent?.toLowerCase().includes('classes') ?? false;
             const hasPercentText = document.body.textContent?.includes('%') ?? false;
@@ -267,7 +314,7 @@ export class OrgStatsWebScraper {
         case 'storage page':
         case 'org storage': {
           // Check for Storage-specific elements
-          const storageElements = await this.page.evaluate(() => {
+          const storageElements = await safeEvaluate(() => {
             const hasStorageText = document.body.textContent?.toLowerCase().includes('storage') ?? false;
             const hasDataStorage = document.body.textContent?.toLowerCase().includes('data storage') ?? false;
             const hasFileStorage = document.body.textContent?.toLowerCase().includes('file storage') ?? false;
@@ -281,7 +328,7 @@ export class OrgStatsWebScraper {
 
         default: {
           // Generic check - just ensure page has loaded
-          const hasContent = await this.page.evaluate(() =>
+          const hasContent = await safeEvaluate(() =>
             Boolean(document.body?.textContent && document.body.textContent.trim().length > 100)
           );
           return hasContent;

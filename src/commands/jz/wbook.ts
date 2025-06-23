@@ -53,18 +53,11 @@ export default class WBook extends SfCommand<ExportResult> {
     if (flags.health) {
       this.log('Performing Salesforce org health check...');
 
-      // Get the org alias - use the actual alias that was passed to --target-org
-      let orgAlias = 'unknown_org';
-
-      try {
-        // For now, let's just hardcode the correct alias to test web scraping
-        // TODO: In production, we'd need a better way to get the original alias from CLI args
-        orgAlias = 't-broadbanduat'; // TEMPORARY FIX for testing
-        this.log(`DEBUG: Using hardcoded alias for testing: ${orgAlias}`);
-      } catch (error) {
-        this.log(`DEBUG: Error getting org alias: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        orgAlias = 't-broadbanduat'; // TEMPORARY FIX
-      }
+      // Get the org alias - use the actual org identifier that was passed to --target-org
+      // Since we can't easily get the original alias used in the CLI command,
+      // we'll use the username which is always available and works for org identification
+      const orgAlias = flags['target-org'].getUsername() ?? 'unknown_org';
+      this.log(`DEBUG: Using org username as identifier: ${orgAlias}`);
 
       this.log(`Using org alias: ${orgAlias}`);
       const healthProcessor = new HealthProcessor(connection, this.log.bind(this), orgAlias);

@@ -2,6 +2,8 @@
 
 ## Known Issue
 
+1. Analysis is include Manage Package as well, we should exclude it from everywhere
+1. System Overview page itself has tons of usefull information, we should include it in the report
 1. Tabset system properties shows ID if component belongs to manage Package
 1. Sometimes code hangs while creating excel, just cancel transaction and run again.
 
