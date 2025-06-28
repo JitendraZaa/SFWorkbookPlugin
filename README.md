@@ -23,11 +23,31 @@
 
 ## Sample Plugin Commands
 
+### Log Delete
+
+1. `sf jz logdelete --target-org myorg --dry-run` Preview what would be deleted
+1. `sf jz logdelete --target-org myorg --confirm` Delete all logs with confirmation
+1. `sf jz logdelete --target-org myorg --confirm --batch-size 5` Delete in smaller batches
+
+### Log Export
+
 1. `sf jz log --target-org <org_alias>` - Export all debug log files from Salesforce org
-1. `sf jz wbook --target-org <org_alias> --health  ` --perform health check
+
+### Health Check
+
+1. `sf jz wbook --target-org <org_alias> --health` --perform health check
+
+### Object Export
+
 1. `sf jz wbook --target-org <org_alias> -e "Account,Contact"` - Main command to run this plugin. If --e is missing then it woulf try to export all objects
+
+### Permission Set Export
+
 1. `sf jz wbook --target-org <org_alias> -p "<csv permission set>"` - Exports permission sets in excel for selected permissions
 1. `sf jz wbook --target-org <org_alias> -p " "` - Exports all permission sets in excel for selected permissions
+
+### Call External Service Demo
+
 1. `sf call external service` - This command make API call and provides some interesting facts about numbers
 
 ## Run Salesforce Code Analyzer
