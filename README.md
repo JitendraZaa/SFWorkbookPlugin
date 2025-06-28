@@ -2,6 +2,7 @@
 
 ## Capabilities
 
+1. Export all debug logs in html format. HTML file "Exports/Logs/<org_Id>/index_num.html", detailed log files "Exports/Logs/<org_Id>/<date>/<username>/<log_id>.log"
 1. Export all objects in excel
 1. Export all permission sets in excel
 1. Export Health report in Text and Excel

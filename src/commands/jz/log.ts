@@ -52,11 +52,17 @@ interface LogSummaryData {
 
 interface CliLogRecord {
   Id: string;
-  LogUser?: string;
+  LogUser?: {
+    Name: string;
+    attributes?: {
+      type: string;
+      url: string;
+    };
+  };
   Operation?: string;
   Status?: string;
   DurationMilliseconds?: number;
-  Size?: number;
+  LogLength?: number; // Changed from Size to LogLength to match actual response
   StartTime?: string;
 }
 
@@ -69,7 +75,7 @@ export default class Log extends SfCommand<LogExportResult> {
     'target-org': Flags.requiredOrg(),
   };
 
-  private static generateHtmlContent(logData: LogSummaryData[]): string {
+  private static generateHtmlContent(logData: LogSummaryData[], orgId: string): string {
     const tableRows = logData.map(log => {
       const logTime = new Date(log.time).toLocaleString();
       const logSizeKB = (log.logSize / 1024).toFixed(2);
@@ -164,6 +170,30 @@ export default class Log extends SfCommand<LogExportResult> {
             <p><strong>Total Size:</strong> ${(logData.reduce((sum, log) => sum + log.logSize, 0) / 1024).toFixed(2)} KB</p>
         </div>
 
+        <div class="summary-info">
+            <h3>🔍 Search Through Log Files</h3>
+            <p>Use the following shell commands to search through all log files:</p>
+            <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px; margin: 10px 0; font-family: 'Courier New', monospace;">
+                <strong>Search for text:</strong><br>
+                <code>grep -rn "search_term" Exports/Logs/${orgId}/ | sed '1s/^/\\n/; $!s/$/\\n/' </code>
+            </div>
+            <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px; margin: 10px 0; font-family: 'Courier New', monospace;">
+                <strong>Case-insensitive search:</strong><br>
+                <code>grep -rin "search_term" Exports/Logs/${orgId}/ | sed '1s/^/\\n/; $!s/$/\\n/' </code>
+            </div>
+            <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px; margin: 10px 0; font-family: 'Courier New', monospace;">
+                <strong>Search with context (3 lines before/after):</strong><br>
+                <code>grep -rnC 3 "search_term" Exports/Logs/${orgId}/ | sed '1s/^/\\n/; $!s/$/\\n/' </code>
+            </div>
+            <p><strong>Options explained:</strong></p>
+            <ul>
+                <li><code>-r</code>: Search recursively through all subdirectories</li>
+                <li><code>-n</code>: Show line numbers in results</li>
+                <li><code>-i</code>: Case-insensitive search</li>
+                <li><code>-C 3</code>: Show 3 lines of context before and after matches</li>
+            </ul>
+        </div>
+
         <table>
             <thead>
                 <tr>
@@ -189,8 +219,10 @@ export default class Log extends SfCommand<LogExportResult> {
   public async run(): Promise<LogExportResult> {
     const { flags } = await this.parse(Log);
     const orgAlias = flags['target-org'].getUsername() ?? 'default';
+    const orgId = flags['target-org'].getOrgId();
+    const orgIdString = String(orgId);
 
-    this.log(`Fetching debug logs from org: ${orgAlias}`);
+    this.log(`Fetching debug logs from org: ${orgAlias} (${orgIdString})`);
 
     // Step 1: Get list of logs using SF CLI
     const logListResult = this.getLogList(orgAlias);
@@ -205,10 +237,10 @@ export default class Log extends SfCommand<LogExportResult> {
     this.log('================================');
 
     // Setup export directory
-    const exportBaseDir = Log.setupExportDirectory();
+    const exportBaseDir = Log.setupExportDirectory(orgIdString);
 
     // Create fail log file for tracking failed downloads
-    const failLogPath = Log.createFailLogFile();
+    const failLogPath = Log.createFailLogFile(orgIdString);
     this.log(`📝 Created fail log file: ${path.basename(failLogPath)}`);
 
     try {
@@ -237,7 +269,7 @@ export default class Log extends SfCommand<LogExportResult> {
       this.log('================================');
 
       // Generate HTML summary
-      const htmlSummaryPath = this.generateHtmlSummary(exportBaseDir, logSummaryData);
+      const htmlSummaryPath = this.generateHtmlSummary(exportBaseDir, logSummaryData, orgIdString);
 
       this.log(`Successfully exported ${finalSuccessCount} debug logs to ${exportBaseDir}`);
       this.log(`HTML summary generated: ${htmlSummaryPath}`);
@@ -257,10 +289,8 @@ export default class Log extends SfCommand<LogExportResult> {
     }
   }
 
-  private static setupExportDirectory(): string {
-    const today = new Date();
-    const dateStr = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}-${String(today.getFullYear()).slice(-2)}`;
-    const exportBaseDir = path.join(process.cwd(), 'Exports', 'Logs', dateStr);
+  private static setupExportDirectory(orgId: string): string {
+    const exportBaseDir = path.join(process.cwd(), 'Exports', 'Logs', String(orgId));
 
     if (!fs.existsSync(exportBaseDir)) {
       fs.mkdirSync(exportBaseDir, { recursive: true });
@@ -282,142 +312,269 @@ export default class Log extends SfCommand<LogExportResult> {
     let failedCount = 0;
     let existingCount = 0;
 
+    // Configuration for parallel processing
+    const BATCH_SIZE = 5; // Process 5 logs concurrently
 
-    // Process each log individually to minimize memory usage
     this.log('================================');
-    this.log('Processing logs one at a time to minimize memory usage...');
+    this.log(`Processing logs in parallel batches of ${BATCH_SIZE}...`);
     this.log('================================');
     const processingStartTime = Date.now();
-    for (let i = 0; i < logListResult.length; i++) {
-      const cliLogRecord = logListResult[i];
-      try {
-        const progressPercent = Math.round(((i + 1) / logListResult.length) * 100);
-        const elapsed = Math.round((Date.now() - processingStartTime) / 1000);
 
-        // Print overall status before processing each log
-        const remaining = logListResult.length - (i + 1);
-        this.log('================================');
-        this.log(`📊 Status: Existing: ${existingCount}, Success: ${successCount}, Failed: ${failedCount}, Remaining: ${remaining} - ${elapsed}s elapsed`);
-        this.log('================================');
-        this.log(`Processing log ${i + 1}/${logListResult.length} (${progressPercent}%): ${cliLogRecord.Id}`);
+    // Split logs into batches
+    const batches = [];
+    for (let i = 0; i < logListResult.length; i += BATCH_SIZE) {
+      batches.push(logListResult.slice(i, i + BATCH_SIZE));
+    }
 
-        // Fetch metadata individually to minimize memory usage
-        // eslint-disable-next-line no-await-in-loop
-        const metadata = await this.getIndividualLogMetadata(connection, cliLogRecord.Id);
+    this.log(`Created ${batches.length} batches for ${logListResult.length} logs`);
 
-        // Small delay after metadata fetch to prevent overwhelming API
-        // eslint-disable-next-line no-await-in-loop
-        await Log.sleep(100); // Increased to 100ms delay after metadata fetch
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      const batchStartTime = Date.now();
 
-        // Log the size of large logs for visibility and apply special handling
-        const isLargeLog = metadata?.LogLength && metadata.LogLength > 10_485_760; // 10MB
-        if (isLargeLog) {
-          const sizeMB = Math.round(metadata.LogLength / 1024 / 1024);
-          this.log(`🔶 Processing LARGE log ${cliLogRecord.Id} (${sizeMB}MB) - using enhanced buffer handling...`);
+      this.log('================================');
+      this.log(`🚀 Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} logs)`);
+      this.log('================================');
 
-          // Check system resources for large files
-          Log.logSystemResources();
+      // Process all logs in the current batch concurrently
+      const batchPromises = batch.map(async (cliLogRecord, indexInBatch) => {
+        const globalIndex = batchIndex * BATCH_SIZE + indexInBatch;
+        return this.processSingleLog(
+          cliLogRecord,
+          globalIndex,
+          logListResult.length,
+          orgAlias,
+          exportBaseDir,
+          connection,
+          failLogPath
+        );
+      });
 
-          // Add extra delay before processing large logs to let system stabilize
-          // eslint-disable-next-line no-await-in-loop
-          await Log.sleep(2000);
-        }
+      // Wait for all logs in this batch to complete
+      // eslint-disable-next-line no-await-in-loop
+      const batchResults = await Promise.allSettled(batchPromises);
 
-        // Create user directory
-        const username = metadata?.LogUser?.Username ?? metadata?.LogUser?.Name ?? cliLogRecord.LogUser ?? 'Unknown';
-        const userDir = path.join(exportBaseDir, username);
-
-        if (!fs.existsSync(userDir)) {
-          fs.mkdirSync(userDir, { recursive: true });
-        }
-
-        // Create filename with log ID
-        const fileName = `${cliLogRecord.Id}.log`;
-        const filePath = path.join(userDir, fileName);
-
-        // Check if log file already exists
-        if (fs.existsSync(filePath)) {
-          this.log(`File exists: ${fileName} - fetching next log now`);
-          existingCount++;
+      // Process results and update counters
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          const { summary, success, existing, failed } = result.value;
+          if (summary) {
+            logSummaryData.push(summary);
+          }
+          if (success) successCount++;
+          if (existing) existingCount++;
+          if (failed) failedCount++;
         } else {
-          // Get log body using SF CLI with retry logic
-          // eslint-disable-next-line no-await-in-loop
-          const logBody = await this.getLogBodyWithRetry(orgAlias, cliLogRecord.Id, metadata?.LogLength, failLogPath);
-
-          // Write log file
-          const logContent = logBody?.trim() ?? 'No log content available';
-          fs.writeFileSync(filePath, logContent, 'utf8');
-
-          // Only log as successful export if it's not an error
-          if (!logContent.includes('ERROR: Unable to retrieve log content')) {
-            this.log(`Exported: ${fileName}`);
-            successCount++;
-          } else {
-            this.log(`Created error file: ${fileName}`);
-            failedCount++;
-          }
+          failedCount++;
+          this.log(`💥 Batch processing error: ${result.reason}`);
         }
+      }
 
-        // Add to summary data
-        logSummaryData.push({
-          user: metadata?.LogUser?.Name ?? cliLogRecord.LogUser ?? 'Unknown',
-          username,
-          operation: metadata?.Operation ?? cliLogRecord.Operation ?? 'Unknown',
-          status: metadata?.Status ?? cliLogRecord.Status ?? 'Unknown',
-          duration: metadata?.DurationMilliseconds ?? cliLogRecord.DurationMilliseconds ?? 0,
-          logSize: metadata?.LogLength ?? cliLogRecord.Size ?? 0,
-          time: metadata?.StartTime ?? cliLogRecord.StartTime ?? new Date().toISOString(),
-          fileName,
-          filePath: path.relative(exportBaseDir, filePath)
-        });
+      const batchDuration = Math.round((Date.now() - batchStartTime) / 1000);
+      const totalElapsed = Math.round((Date.now() - processingStartTime) / 1000);
+      const remaining = logListResult.length - ((batchIndex + 1) * BATCH_SIZE);
 
+      this.log('================================');
+      this.log(`📊 Batch ${batchIndex + 1}/${batches.length} completed in ${batchDuration}s`);
+      this.log(`📈 Status: ✅ Existing: ${existingCount}, 🆕 Downloaded: ${successCount}, ❌ Failed: ${failedCount}, ⏳ Remaining: ${Math.max(0, remaining)}`);
+      this.log(`⏱️  Total time elapsed: ${totalElapsed}s`);
+      this.log('================================');
 
-
-        // Memory management: metadata will be garbage collected automatically
-
-        // Add delay after every log to prevent overwhelming the system
-        // eslint-disable-next-line no-await-in-loop
-        await Log.sleep(300); // Increased to 300ms to prevent ENOBUFS
-
-        // Add longer delay for large logs to allow system recovery
-        if (logSummaryData[logSummaryData.length - 1]?.logSize && logSummaryData[logSummaryData.length - 1].logSize > 5_242_880) { // 5MB
-          // eslint-disable-next-line no-await-in-loop
-          await Log.sleep(1000); // Additional 1s delay for large logs
-        }
-
-        // Memory management and extended throttling every 25 logs
-        if ((i + 1) % 25 === 0) {
-          this.log(`💾 Memory management pause after ${i + 1} logs...`);
-          // eslint-disable-next-line no-await-in-loop
-          await Log.sleep(2000); // 2s pause every 25 logs for memory recovery
-
-          // Suggest garbage collection if available
+      // Trigger garbage collection if available (no pause between batches)
+      if (batchIndex < batches.length - 1) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if ((global as any).gc) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if ((global as any).gc) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (global as any).gc();
-            this.log('🗑️ Garbage collection triggered');
-          }
+          (global as any).gc();
+          this.log('🗑️ Garbage collection triggered');
         }
 
-        // Additional throttling every 10 logs  
-        if ((i + 1) % 10 === 0 && (i + 1) % 25 !== 0) {
-          // eslint-disable-next-line no-await-in-loop
-          await Log.sleep(500); // 500ms additional delay every 10 logs (but not 25)
+        // Log system resources periodically
+        if ((batchIndex + 1) % 3 === 0) {
+          Log.logSystemResources();
         }
-
-      } catch (error) {
-        failedCount++;
-        this.log(`💥 Failed to export log ${cliLogRecord.Id}: ${error instanceof Error ? error.message : String(error)}`);
-
-
       }
     }
 
     this.log('================================');
-    this.log(`📈 Main processing completed - Existing: ${existingCount}, Success: ${successCount}, Failed: ${failedCount}, Total: ${existingCount + successCount + failedCount}`);
+    this.log('🎉 Parallel processing completed!');
+    this.log('📊 Final Results:');
+    this.log(`   ✅ Files already existed: ${existingCount} (skipped download)`);
+    this.log(`   🆕 Files downloaded: ${successCount}`);
+    this.log(`   ❌ Files failed: ${failedCount}`);
+    this.log(`   📁 Total files processed: ${existingCount + successCount + failedCount}`);
     this.log('================================');
     return { logSummaryData, successCount };
+  }
+
+  private async processSingleLog(
+    cliLogRecord: CliLogRecord,
+    globalIndex: number,
+    totalLogs: number,
+    orgAlias: string,
+    exportBaseDir: string,
+    connection: unknown,
+    failLogPath: string
+  ): Promise<{ summary?: LogSummaryData; success: boolean; existing: boolean; failed: boolean }> {
+    try {
+      const progressPercent = Math.round(((globalIndex + 1) / totalLogs) * 100);
+
+      this.log(`Processing log ${globalIndex + 1}/${totalLogs} (${progressPercent}%): ${cliLogRecord.Id}`);
+
+      // First do a quick check if file might already exist using basic info
+      // This avoids unnecessary metadata fetches for existing files
+      const basicUsername = String(cliLogRecord.LogUser?.Name ?? 'Unknown');
+      const basicDate = new Date(cliLogRecord.StartTime ?? new Date());
+      const basicDateStr = `${String(basicDate.getMonth() + 1).padStart(2, '0')}-${String(basicDate.getDate()).padStart(2, '0')}-${String(basicDate.getFullYear()).slice(-2)}`;
+      const basicFileName = `${String(cliLogRecord.Id)}.log`;
+
+      const basicFilePath = path.join(String(exportBaseDir), basicDateStr, basicUsername, basicFileName);
+
+      // Quick existence check to avoid metadata fetch if file already exists
+      if (fs.existsSync(basicFilePath)) {
+        this.log(`✅ File already exists: ${basicFileName} - skipping metadata fetch`);
+
+        // Still get metadata for complete summary data, but we know file exists
+        const metadata = await this.getIndividualLogMetadata(connection, cliLogRecord.Id);
+        const username = String(metadata?.LogUser?.Username ?? metadata?.LogUser?.Name ?? basicUsername);
+        const logDate = new Date(metadata?.StartTime ?? cliLogRecord.StartTime ?? new Date());
+        const dateStr = `${String(logDate.getMonth() + 1).padStart(2, '0')}-${String(logDate.getDate()).padStart(2, '0')}-${String(logDate.getFullYear()).slice(-2)}`;
+
+        const summary: LogSummaryData = {
+          user: String(metadata?.LogUser?.Name ?? basicUsername),
+          username,
+          operation: String(metadata?.Operation ?? cliLogRecord.Operation ?? 'Unknown'),
+          status: String(metadata?.Status ?? cliLogRecord.Status ?? 'Unknown'),
+          duration: Number(metadata?.DurationMilliseconds ?? cliLogRecord.DurationMilliseconds ?? 0),
+          logSize: Number(metadata?.LogLength ?? cliLogRecord.LogLength ?? 0),
+          time: String(metadata?.StartTime ?? cliLogRecord.StartTime ?? new Date().toISOString()),
+          fileName: basicFileName,
+          filePath: path.join(String(dateStr), String(username), String(basicFileName))
+        };
+
+        return { summary, success: false, existing: true, failed: false };
+      }
+
+      // File doesn't exist, proceed with full metadata fetch and download
+      this.log(`📥 Downloading log ${globalIndex + 1}/${totalLogs} (${progressPercent}%): ${cliLogRecord.Id}`);
+
+      // Fetch metadata
+      let metadata: ApexLogRecord | null = null;
+      try {
+        metadata = await this.getIndividualLogMetadata(connection, cliLogRecord.Id);
+        if (!metadata) {
+          this.log(`⚠️ No metadata found for log ${cliLogRecord.Id} - using CLI data`);
+        }
+      } catch (metadataError) {
+        this.log(`💥 Metadata fetch failed for ${cliLogRecord.Id}: ${metadataError instanceof Error ? metadataError.message : String(metadataError)}`);
+        // Continue with CLI data only
+      }
+
+      // Small delay after metadata fetch to prevent overwhelming API
+      // eslint-disable-next-line no-await-in-loop
+      await Log.sleep(50); // Reduced from 100ms since we're doing parallel processing
+
+      // Create date and user directory based on log's creation date
+      const username = String(metadata?.LogUser?.Username ?? metadata?.LogUser?.Name ?? basicUsername);
+
+      // Extract date from log's StartTime
+      const logDate = new Date(metadata?.StartTime ?? cliLogRecord.StartTime ?? new Date());
+      const dateStr = `${String(logDate.getMonth() + 1).padStart(2, '0')}-${String(logDate.getDate()).padStart(2, '0')}-${String(logDate.getFullYear()).slice(-2)}`;
+
+      this.log(`📁 Creating directory structure: ${dateStr}/${username}`);
+      const userDir = path.join(String(exportBaseDir), String(dateStr), String(username));
+
+      try {
+        if (!fs.existsSync(userDir)) {
+          fs.mkdirSync(userDir, { recursive: true });
+          this.log(`✅ Created directory: ${userDir}`);
+        } else {
+          this.log(`📁 Directory exists: ${userDir}`);
+        }
+      } catch (dirError) {
+        this.log(`💥 Failed to create directory ${userDir}: ${dirError instanceof Error ? dirError.message : String(dirError)}`);
+        throw dirError;
+      }
+
+      // Create filename with log ID
+      const fileName = `${String(cliLogRecord.Id)}.log`;
+      const filePath = path.join(userDir, fileName);
+      this.log(`📄 Target file path: ${filePath}`);
+
+      // Double-check if file exists with accurate path (in case username differs)
+      if (fs.existsSync(filePath)) {
+        this.log(`✅ File exists with accurate path: ${fileName} - skipping download`);
+
+        const summary: LogSummaryData = {
+          user: String(metadata?.LogUser?.Name ?? basicUsername),
+          username,
+          operation: String(metadata?.Operation ?? cliLogRecord.Operation ?? 'Unknown'),
+          status: String(metadata?.Status ?? cliLogRecord.Status ?? 'Unknown'),
+          duration: Number(metadata?.DurationMilliseconds ?? cliLogRecord.DurationMilliseconds ?? 0),
+          logSize: Number(metadata?.LogLength ?? cliLogRecord.LogLength ?? 0),
+          time: String(metadata?.StartTime ?? cliLogRecord.StartTime ?? new Date().toISOString()),
+          fileName,
+          filePath: path.join(dateStr, username, fileName)
+        };
+
+        return { summary, success: false, existing: true, failed: false };
+      }
+
+      // Log the size of large logs for visibility
+      const isLargeLog = metadata?.LogLength && metadata.LogLength > 10_485_760; // 10MB
+      if (isLargeLog && metadata?.LogLength) {
+        const sizeMB = Math.round(metadata.LogLength / 1024 / 1024);
+        this.log(`🔶 Processing LARGE log ${cliLogRecord.Id} (${sizeMB}MB)`);
+      }
+
+      // Get log body using SF CLI with retry logic
+      let logBody: string;
+      try {
+        this.log(`🔽 Starting download for ${cliLogRecord.Id}...`);
+        logBody = await this.getLogBodyWithRetry(orgAlias, cliLogRecord.Id, metadata?.LogLength, failLogPath);
+        this.log(`✅ Download completed for ${cliLogRecord.Id}`);
+      } catch (downloadError) {
+        this.log(`💥 Download failed for ${cliLogRecord.Id}: ${downloadError instanceof Error ? downloadError.message : String(downloadError)}`);
+        logBody = `ERROR: Unable to retrieve log content for ${cliLogRecord.Id}\nReason: ${downloadError instanceof Error ? downloadError.message : String(downloadError)}`;
+      }
+
+      // Write log file
+      const logContent = logBody?.trim() ?? 'No log content available';
+      try {
+        this.log(`💾 Writing file: ${fileName} (${logContent.length} characters)`);
+        fs.writeFileSync(filePath, logContent, 'utf8');
+        this.log(`✅ File written successfully: ${fileName}`);
+      } catch (writeError) {
+        this.log(`💥 Failed to write file ${fileName}: ${writeError instanceof Error ? writeError.message : String(writeError)}`);
+        throw writeError;
+      }
+
+      // Create summary data
+      const summary: LogSummaryData = {
+        user: String(metadata?.LogUser?.Name ?? cliLogRecord.LogUser?.Name ?? 'Unknown'),
+        username,
+        operation: String(metadata?.Operation ?? cliLogRecord.Operation ?? 'Unknown'),
+        status: String(metadata?.Status ?? cliLogRecord.Status ?? 'Unknown'),
+        duration: Number(metadata?.DurationMilliseconds ?? cliLogRecord.DurationMilliseconds ?? 0),
+        logSize: Number(metadata?.LogLength ?? cliLogRecord.LogLength ?? 0),
+        time: String(metadata?.StartTime ?? cliLogRecord.StartTime ?? new Date().toISOString()),
+        fileName,
+        filePath: path.join(String(dateStr), String(username), String(fileName))
+      };
+
+      // Check if export was successful
+      if (!logContent.includes('ERROR: Unable to retrieve log content')) {
+        this.log(`✅ Exported: ${fileName}`);
+        return { summary, success: true, existing: false, failed: false };
+      } else {
+        this.log(`❌ Created error file: ${fileName}`);
+        return { summary, success: false, existing: false, failed: true };
+      }
+
+    } catch (error) {
+      this.log(`💥 Failed to export log ${cliLogRecord.Id}: ${error instanceof Error ? error.message : String(error)}`);
+      return { success: false, existing: false, failed: true };
+    }
   }
 
   private async retryFailedLogs(
@@ -459,16 +616,21 @@ export default class Log extends SfCommand<LogExportResult> {
 
 
 
-        // Create user directory
-        const username = metadata?.LogUser?.Username ?? metadata?.LogUser?.Name ?? originalLogRecord.LogUser ?? 'Unknown';
-        const userDir = path.join(exportBaseDir, username);
+        // Create date and user directory based on log's creation date
+        const username = String(metadata?.LogUser?.Username ?? metadata?.LogUser?.Name ?? originalLogRecord.LogUser?.Name ?? 'Unknown');
+
+        // Extract date from log's StartTime
+        const logDate = new Date(metadata?.StartTime ?? originalLogRecord.StartTime ?? new Date());
+        const dateStr = `${String(logDate.getMonth() + 1).padStart(2, '0')}-${String(logDate.getDate()).padStart(2, '0')}-${String(logDate.getFullYear()).slice(-2)}`;
+
+        const userDir = path.join(String(exportBaseDir), dateStr, username);
 
         if (!fs.existsSync(userDir)) {
           fs.mkdirSync(userDir, { recursive: true });
         }
 
         // Create filename with log ID
-        const fileName = `${logId}.log`;
+        const fileName = `${String(logId)}.log`;
         const filePath = path.join(userDir, fileName);
 
         // Skip if file already exists and is not an error file
@@ -501,15 +663,15 @@ export default class Log extends SfCommand<LogExportResult> {
           // Add or update summary data
           const existingSummaryIndex = logSummaryData.findIndex(item => item.fileName === fileName);
           const summaryItem = {
-            user: metadata?.LogUser?.Name ?? originalLogRecord.LogUser ?? 'Unknown',
+            user: String(metadata?.LogUser?.Name ?? originalLogRecord.LogUser?.Name ?? 'Unknown'),
             username,
-            operation: metadata?.Operation ?? originalLogRecord.Operation ?? 'Unknown',
-            status: metadata?.Status ?? originalLogRecord.Status ?? 'Unknown',
-            duration: metadata?.DurationMilliseconds ?? originalLogRecord.DurationMilliseconds ?? 0,
-            logSize: metadata?.LogLength ?? originalLogRecord.Size ?? 0,
-            time: metadata?.StartTime ?? originalLogRecord.StartTime ?? new Date().toISOString(),
+            operation: String(metadata?.Operation ?? originalLogRecord.Operation ?? 'Unknown'),
+            status: String(metadata?.Status ?? originalLogRecord.Status ?? 'Unknown'),
+            duration: Number(metadata?.DurationMilliseconds ?? originalLogRecord.DurationMilliseconds ?? 0),
+            logSize: Number(metadata?.LogLength ?? originalLogRecord.LogLength ?? 0),
+            time: String(metadata?.StartTime ?? originalLogRecord.StartTime ?? new Date().toISOString()),
             fileName,
-            filePath: path.relative(exportBaseDir, filePath)
+            filePath: path.join(String(dateStr), String(username), String(fileName))
           };
 
           if (existingSummaryIndex >= 0) {
@@ -635,10 +797,10 @@ export default class Log extends SfCommand<LogExportResult> {
       let actualFileName: string | null = null;
 
       for (const fileName of possibleNames) {
-        const filePath = path.join(tempDir, fileName as string);
+        const filePath = path.join(String(tempDir), String(fileName));
         if (fs.existsSync(filePath)) {
           logFilePath = filePath;
-          actualFileName = fileName as string;
+          actualFileName = String(fileName);
           break;
         }
       }
@@ -694,7 +856,7 @@ export default class Log extends SfCommand<LogExportResult> {
           const files = fs.readdirSync(tempDir);
           this.log(`🧹 Cleaning up ${files.length} temp files after error`);
           for (const file of files) {
-            fs.unlinkSync(path.join(tempDir, file));
+            fs.unlinkSync(path.join(String(tempDir), String(file)));
           }
         }
       } catch (cleanupError) {
@@ -798,7 +960,7 @@ export default class Log extends SfCommand<LogExportResult> {
       if (fs.existsSync(tempDir)) {
         const files = fs.readdirSync(tempDir);
         for (const file of files) {
-          const filePath = path.join(tempDir, file);
+          const filePath = path.join(String(tempDir), String(file));
           fs.unlinkSync(filePath);
         }
         fs.rmdirSync(tempDir);
@@ -808,10 +970,17 @@ export default class Log extends SfCommand<LogExportResult> {
     }
   }
 
-  private static createFailLogFile(): string {
+  private static createFailLogFile(orgId: string): string {
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, '0')}_${String(now.getMinutes()).padStart(2, '0')}_${String(now.getSeconds()).padStart(2, '0')}`;
-    const failLogPath = path.join(process.cwd(), `fail_${timeStr}.txt`);
+
+    // Create fail log file in the Logs directory organized by OrgId
+    const logsDir = path.join(process.cwd(), 'Exports', 'Logs', String(orgId));
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+
+    const failLogPath = path.join(logsDir, `fail_${timeStr}.txt`);
 
     // Create empty fail log file
     fs.writeFileSync(failLogPath, '', 'utf8');
@@ -878,20 +1047,20 @@ export default class Log extends SfCommand<LogExportResult> {
     }
   }
 
-  private generateHtmlSummary(exportDir: string, logData: LogSummaryData[]): string {
+  private generateHtmlSummary(exportDir: string, logData: LogSummaryData[], orgId: string): string {
     // Find next available index for HTML file
     let htmlIndex = 1;
     let htmlFileName = `Index_${htmlIndex}.html`;
-    let htmlPath = path.join(exportDir, htmlFileName);
+    let htmlPath = path.join(String(exportDir), String(htmlFileName));
 
     while (fs.existsSync(htmlPath)) {
       htmlIndex++;
       htmlFileName = `Index_${htmlIndex}.html`;
-      htmlPath = path.join(exportDir, htmlFileName);
+      htmlPath = path.join(String(exportDir), String(htmlFileName));
     }
 
     // Generate HTML content
-    const htmlContent = Log.generateHtmlContent(logData);
+    const htmlContent = Log.generateHtmlContent(logData, orgId);
 
     // Write HTML file
     fs.writeFileSync(htmlPath, htmlContent);
