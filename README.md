@@ -6,13 +6,14 @@ A comprehensive Salesforce DX plugin that provides multiple commands for analyzi
 
 ## Available Commands
 
-This plugin provides 5 main commands:
+This plugin provides 6 main commands:
 
 1. **`jz log`** - Export all debug logs with HTML summary and organized file structure
 2. **`jz logdelete`** - Safely delete debug logs with dry-run and batch processing options
 3. **`jz permissionsets`** - Export permission sets metadata to Excel workbook
-4. **`jz health`** - Comprehensive org health check with detailed analysis and reports
-5. **`jz wbook`** - Export Salesforce objects metadata to Excel workbook
+4. **`jz permissionsets-compare`** - Compare permission sets between two orgs and highlight differences
+5. **`jz health`** - Comprehensive org health check with detailed analysis and reports
+6. **`jz wbook`** - Export Salesforce objects metadata to Excel workbook
 
 ## Capabilities
 
@@ -23,10 +24,11 @@ This plugin provides 5 main commands:
 - Safely delete debug logs with confirmation and dry-run modes
 - Batch processing to respect API limits and handle large volumes
 
-### Metadata Export
+### Metadata Export & Comparison
 
 - Export objects metadata to Excel workbook with comprehensive field information
 - Export permission sets with object permissions, field permissions, and system permissions
+- Compare permission sets between two orgs to identify configuration differences
 - Professional Excel formatting with multiple worksheets and proper headers
 
 ### Health Analysis
@@ -194,6 +196,49 @@ sf jz permissionsets --target-org myorg -p "Admin_Access" -d "CustomDir" -s
 - Professional Excel formatting with separate worksheets
 - Progress reporting and error handling
 
+### Permission Sets Comparison
+
+**Compare all custom permission sets between two orgs:**
+
+```bash
+sf jz permissionsets-compare --source-org dev-sandbox --target-org production
+```
+
+**Compare specific permission sets:**
+
+```bash
+sf jz permissionsets-compare --source-org dev-sandbox --target-org production --permission-sets "Custom_Admin,Sales_Manager"
+```
+
+**Include standard permission sets in comparison:**
+
+```bash
+sf jz permissionsets-compare --source-org dev-sandbox --target-org production --include-standard
+```
+
+**Export to custom directory:**
+
+```bash
+sf jz permissionsets-compare --source-org dev-sandbox --target-org production --output-dir "PermissionAudits"
+```
+
+**Use short flags:**
+
+```bash
+sf jz permissionsets-compare -s dev -t prod -p "Marketing_User,Sales_User" -d "Reports" -i
+```
+
+**Features:**
+
+- Compare permission sets between source and target orgs
+- Identify Added, Removed, and Modified permissions
+- Comprehensive analysis (Object, Field, and System permissions)
+- Generate detailed Excel reports with differences only
+- Individual worksheets for each permission set with differences
+- Summary worksheet with comparison overview
+- Parallel processing for optimal performance
+- Smart filtering to exclude identical permission sets from detailed output
+
 ### Objects Metadata Export
 
 **Export specific objects:**
@@ -307,8 +352,14 @@ sf code-analyzer run --output-file "codeAnalyzer/results.csv"
    - Use smaller batch sizes for log processing if needed
 
 5. **Excel generation hanging:**
+
    - Cancel the operation and run again
    - Ensure sufficient system memory for large datasets
+
+6. **Permission set comparison issues:**
+   - Ensure both orgs are accessible and authenticated
+   - Some permission differences may be expected between sandbox and production environments
+   - Standard permission sets are typically identical and can be excluded with the default behavior
 
 ### Performance Tips
 
@@ -316,6 +367,8 @@ sf code-analyzer run --output-file "codeAnalyzer/results.csv"
 - Use smaller batch sizes for orgs with many debug logs
 - Choose specific permission sets instead of exporting all when possible
 - Use text format for health reports if Excel generation is slow
+- For permission set comparisons, specify individual permission sets rather than comparing all when possible
+- Permission set comparisons use parallel processing automatically for better performance
 
 ## Important Links
 
