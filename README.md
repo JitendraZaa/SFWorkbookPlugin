@@ -1,79 +1,232 @@
-# sf_workbook - Salesforce DX Plugin for Configuration Workbook
+# Salesforce DX Plugin for Configuration Workbook
+
+## Overview
+
+A comprehensive Salesforce DX plugin that provides multiple commands for analyzing, exporting, and managing your Salesforce org configuration and metadata. Each command is focused on a specific task to provide better usability and maintainability.
+
+## Available Commands
+
+This plugin provides 5 main commands:
+
+1. **`jz log`** - Export all debug logs with HTML summary and organized file structure
+2. **`jz logdelete`** - Safely delete debug logs with dry-run and batch processing options
+3. **`jz permissionsets`** - Export permission sets metadata to Excel workbook
+4. **`jz health`** - Comprehensive org health check with detailed analysis and reports
+5. **`jz wbook`** - Export Salesforce objects metadata to Excel workbook
 
 ## Capabilities
 
-1. Export all debug logs in html format. HTML file "Exports/Logs/<org_Id>/index_num.html", detailed log files "Exports/Logs/<org_Id>/<date>/<username>/<log_id>.log"
-1. Export all objects in excel
-1. Export all permission sets in excel
-1. Export Health report in Text and Excel
+### Debug Log Management
 
-## Known Issue
+- Export all debug logs in organized directory structure: `Exports/Logs/<org_id>/<date>/<username>/<log_id>.log`
+- Generate HTML summary with search functionality and detailed log information
+- Safely delete debug logs with confirmation and dry-run modes
+- Batch processing to respect API limits and handle large volumes
 
-1. Analysis is include Manage Package as well, we should exclude it from everywhere
-1. System Overview page itself has tons of usefull information, we should include it in the report
-1. Tabset system properties shows ID if component belongs to manage Package
-1. Sometimes code hangs while creating excel, just cancel transaction and run again.
+### Metadata Export
+
+- Export objects metadata to Excel workbook with comprehensive field information
+- Export permission sets with object permissions, field permissions, and system permissions
+- Professional Excel formatting with multiple worksheets and proper headers
+
+### Health Analysis
+
+- Comprehensive org health check across 15+ categories
+- Analysis of Apex classes, flows, validation rules, unused components, and more
+- Multiple report formats (Excel, Text, or both)
+- Severity-based issue classification with actionable recommendations
+- Storage usage analysis and optimization suggestions
+
+## Known Issues
+
+1. Analysis includes Managed Packages - should exclude them from analysis
+2. System Overview page has useful information that should be included in health reports
+3. Tabset system properties show ID if component belongs to Managed Package
+4. Sometimes Excel generation hangs - cancel and re-run if this occurs
 
 ## Initial Setup
 
-1. Download this Git
-1. run `yarn install`
-1. Navigate to main folder and run command `sf plugins link .`
-1. After every change in code, make sure to run `yarn run build`
+1. Clone this repository
 
-## Sample Plugin Commands
+   ```bash
+   git clone <repository-url>
+   cd sf_workbook
+   ```
 
-### Log Delete
+2. Install dependencies
 
-1. `sf jz logdelete --target-org myorg --dry-run` Preview what would be deleted
-1. `sf jz logdelete --target-org myorg --confirm` Delete all logs with confirmation
-1. `sf jz logdelete --target-org myorg --confirm --batch-size 5` Delete in smaller batches
+   ```bash
+   yarn install
+   ```
 
-### Log Export
+3. Link the plugin to Salesforce CLI
 
-1. `sf jz log --target-org <org_alias>` - Export all debug log files from Salesforce org
+   ```bash
+   sf plugins link .
+   ```
 
-### Health Check
+4. Build the project after any code changes
+   ```bash
+   yarn build
+   ```
 
-1. `sf jz wbook --target-org <org_alias> --health` --perform health check
+## Command Reference
 
-### Object Export
+### Debug Log Export
 
-1. `sf jz wbook --target-org <org_alias> -e "Account,Contact"` - Main command to run this plugin. If --e is missing then it woulf try to export all objects
+**Export all debug logs from org:**
 
-### Permission Set Export
+```bash
+sf jz log --target-org <org_alias>
+```
 
-1. `sf jz permissionsets --target-org myorg` - Export all custom permission sets
+**Features:**
 
-1. `sf jz permissionsets --target-org myorg --permission-sets "Sales_User,Marketing_User"` - Export specific permission sets
-1. `sf jz permissionsets --target-org myorg --include-standard` - Include standard permission sets
+- Exports all debug logs to organized directory structure
+- Generates HTML summary with search functionality
+- Parallel processing for better performance
+- Automatic retry mechanism for failed downloads
+- Memory optimization for large logs
 
-1. `sf jz permissionsets --target-org myorg --output-dir "Exports"` - Custom export directory
-1. `sf jz permissionsets --target-org myorg -p "Admin_Access" -d "CustomDir" -s` - Use short flags
+### Debug Log Deletion
+
+**Preview what would be deleted (dry-run):**
+
+```bash
+sf jz logdelete --target-org myorg --dry-run
+```
+
+**Delete all logs with confirmation:**
+
+```bash
+sf jz logdelete --target-org myorg --confirm
+```
+
+**Delete in smaller batches:**
+
+```bash
+sf jz logdelete --target-org myorg --confirm --batch-size 5
+```
+
+**Features:**
+
+- Safety-first approach with required confirmation
+- Dry-run mode to preview deletions
+- Configurable batch sizes (1-50 logs per batch)
+- Progress tracking and error handling
+
+### Health Check Analysis
+
+**Comprehensive health check with both Excel and text reports:**
+
+```bash
+sf jz health --target-org myorg
+```
+
+**Generate only Excel report:**
+
+```bash
+sf jz health --target-org myorg --report-format excel
+```
+
+**Generate only text report:**
+
+```bash
+sf jz health --target-org myorg --report-format text
+```
+
+**Export to custom directory:**
+
+```bash
+sf jz health --target-org myorg --output-dir "Exports"
+```
+
+**Use short flags:**
+
+```bash
+sf jz health --target-org myorg -f excel -d "Reports" -s
+```
+
+**Features:**
+
+- Analysis across 15+ categories (Apex, Flows, Validation Rules, etc.)
+- Multiple report formats with professional formatting
+- Severity-based issue classification (High, Medium, Low)
+- Organization summary statistics and usage metrics
+- Detailed recommendations for each issue type
+
+### Permission Sets Export
+
+**Export all custom permission sets:**
+
+```bash
+sf jz permissionsets --target-org myorg
+```
+
+**Export specific permission sets:**
+
+```bash
+sf jz permissionsets --target-org myorg --permission-sets "Sales_User,Marketing_User"
+```
+
+**Include standard Salesforce permission sets:**
+
+```bash
+sf jz permissionsets --target-org myorg --include-standard
+```
+
+**Export to custom directory:**
+
+```bash
+sf jz permissionsets --target-org myorg --output-dir "Exports"
+```
+
+**Use short flags:**
+
+```bash
+sf jz permissionsets --target-org myorg -p "Admin_Access" -d "CustomDir" -s
+```
+
+**Features:**
+
+- Export custom or standard permission sets
+- Comprehensive permission analysis (Object, Field, System permissions)
+- Professional Excel formatting with separate worksheets
+- Progress reporting and error handling
+
+### Objects Metadata Export
+
+**Export specific objects:**
+
+```bash
+sf jz wbook --target-org myorg --objects "Account,Contact"
+```
+
+**Export default objects (first 5 if none specified):**
+
+```bash
+sf jz wbook --target-org myorg
+```
+
+**Features:**
+
+- Export object metadata to Excel workbook
+- Comprehensive field information and relationships
+- Professional formatting with proper headers
 
 ### Call External Service Demo
 
-1. `sf call external service` - This command make API call and provides some interesting facts about numbers
+**API demonstration command:**
 
-## Run Salesforce Code Analyzer
+```bash
+sf call external service
+```
 
-`sf code-analyzer run --output-file "codeAnalyzer/results.csv"`
+This command demonstrates API calls and provides interesting facts about numbers.
 
-## Important Links
+## Development Workflow
 
-- [How to create plugin documentation](https://github.com/salesforcecli/cli/wiki/Get-Started-And-Create-Your-First-Plug-In)
-
-## Troubleshoot
-
-1. If changes in plugin is not reflecting, that means after changes code is not compiled. Run this command in seperate terminal , so that after each file change code automatically compiled. `yarn compile --watch`
-1. Remove Husky checks before git commit , else we would not be able to commit code in git `rm -rf .husky/`
-1. If you get some error on dependencies etc, run below command to clear cache and install node plugins again
-
-## Yarn Commands (Recommended)
-
-This project uses **Yarn** as the package manager for better performance and consistency. Use these commands instead of npm equivalents:
-
-### **Build Commands:**
+### Build Commands
 
 ```bash
 # Main build command (compiles TypeScript + runs lint)
@@ -89,11 +242,11 @@ yarn lint
 yarn test
 ```
 
-### **Development Commands:**
+### Development Commands
 
 ```bash
 # Install dependencies
-yarn install    # or just: yarn
+yarn install
 
 # Clean build artifacts
 yarn clean
@@ -106,7 +259,7 @@ yarn format
 yarn compile --watch
 ```
 
-### **Migration from npm:**
+### Command Equivalents
 
 | **npm command**   | **Yarn equivalent**      |
 | ----------------- | ------------------------ |
@@ -116,11 +269,69 @@ yarn compile --watch
 | `npm run test`    | `yarn test` ✨           |
 | `npm run lint`    | `yarn lint` ✨           |
 
-### **Why Yarn?**
+### Why Yarn?
 
 - **Faster installs** (parallel downloads)
 - **Shorter commands** (`yarn build` vs `npm run build`)
 - **Better caching** and dependency resolution
-- **No mixed package manager warnings**
+- **Consistent dependency versions** with `yarn.lock`
 
-**Note:** This project has been cleaned to use only Yarn. The `package-lock.json` has been removed to prevent conflicts with `yarn.lock`.
+## Code Analysis
+
+Run Salesforce Code Analyzer for additional code quality checks:
+
+```bash
+sf code-analyzer run --output-file "codeAnalyzer/results.csv"
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Plugin changes not reflecting:**
+
+   - Ensure code is compiled after changes: `yarn build`
+   - Use watch mode for auto-compilation: `yarn compile --watch`
+
+2. **Git commit issues with Husky:**
+
+   - Remove Husky checks if needed: `rm -rf .husky/`
+
+3. **Dependency issues:**
+
+   - Clear cache and reinstall: `yarn clean-all && yarn install`
+
+4. **Memory issues with large logs:**
+
+   - The plugin includes memory optimization and garbage collection
+   - Use smaller batch sizes for log processing if needed
+
+5. **Excel generation hanging:**
+   - Cancel the operation and run again
+   - Ensure sufficient system memory for large datasets
+
+### Performance Tips
+
+- Use dry-run mode first to estimate processing time for log operations
+- Use smaller batch sizes for orgs with many debug logs
+- Choose specific permission sets instead of exporting all when possible
+- Use text format for health reports if Excel generation is slow
+
+## Important Links
+
+- [Salesforce CLI Plugin Development Guide](https://github.com/salesforcecli/cli/wiki/Get-Started-And-Create-Your-First-Plug-In)
+- [sf-plugins-core Documentation](https://github.com/salesforcecli/sf-plugins-core)
+- [Salesforce DX Developer Guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/)
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests: `yarn test`
+5. Build the project: `yarn build`
+6. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

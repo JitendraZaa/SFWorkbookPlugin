@@ -5,7 +5,7 @@ import { Messages } from '@salesforce/core';
 import * as XLSX from 'xlsx';
 
 import { ObjectProcessor } from '../../import/wbook/objects/objectProcessor.js';
-import { HealthProcessor } from '../../import/wbook/health/healthProcessor.js';
+
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('sf_workbook', 'jz.wbook');
@@ -26,12 +26,7 @@ export default class WBook extends SfCommand<ExportResult> {
       summary: 'List of objects to export'
     }),
 
-    'health': Flags.boolean({
-      char: 'c',
-      description: 'Perform Salesforce org health check and generate PDF report with technical debt analysis.',
-      required: false,
-      summary: 'Perform org health check'
-    }),
+
   };
 
   public async run(): Promise<ExportResult> {
@@ -41,23 +36,6 @@ export default class WBook extends SfCommand<ExportResult> {
 
     // Debug logging for flags
     this.log(`DEBUG: flags.objects = ${flags.objects ? `'${flags.objects}'` : 'undefined'}`);
-    this.log(`DEBUG: flags.health = ${flags.health ? 'true' : 'false'}`);
-
-    // Handle health check if requested
-    if (flags.health) {
-      this.log('Performing Salesforce org health check...');
-
-      // Get the org alias - use the actual org identifier that was passed to --target-org
-      // Since we can't easily get the original alias used in the CLI command,
-      // we'll use the username which is always available and works for org identification
-      const orgAlias = flags['target-org'].getUsername() ?? 'unknown_org';
-      this.log(`DEBUG: Using org username as identifier: ${orgAlias}`);
-
-      this.log(`Using org alias: ${orgAlias}`);
-      const healthProcessor = new HealthProcessor(connection, this.log.bind(this), orgAlias);
-      await healthProcessor.performHealthCheck();
-      return;
-    }
 
     const workbook = XLSX.utils.book_new();
 
