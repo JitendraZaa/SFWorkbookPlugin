@@ -1,5 +1,11 @@
 # sf_workbook - Salesforce DX Plugin for Configuration Workbook
 
+## Capabilities
+
+1. Export all objects in excel
+1. Export all permission sets in excel
+1. Export Health report in Text and Excel
+
 ## Known Issue
 
 1. Analysis is include Manage Package as well, we should exclude it from everywhere
@@ -16,6 +22,7 @@
 
 ## Sample Plugin Commands
 
+1. `sf jz log --target-org <org_alias>` - Export all debug log files from Salesforce org
 1. `sf jz wbook --target-org <org_alias> --health  ` --perform health check
 1. `sf jz wbook --target-org <org_alias> -e "Account,Contact"` - Main command to run this plugin. If --e is missing then it woulf try to export all objects
 1. `sf jz wbook --target-org <org_alias> -p "<csv permission set>"` - Exports permission sets in excel for selected permissions
