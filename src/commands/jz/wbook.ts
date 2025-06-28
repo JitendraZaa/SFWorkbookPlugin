@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
 import { Messages } from '@salesforce/core';
 import * as XLSX from 'xlsx';
-import { PermissionSetProcessor } from '../../import/wbook/permissionsets/permissionSetProcessor.js';
+
 import { ObjectProcessor } from '../../import/wbook/objects/objectProcessor.js';
 import { HealthProcessor } from '../../import/wbook/health/healthProcessor.js';
 
@@ -25,12 +25,7 @@ export default class WBook extends SfCommand<ExportResult> {
       required: false,
       summary: 'List of objects to export'
     }),
-    'permission-sets': Flags.string({
-      char: 'p',
-      description: 'Comma-separated list of permission sets to export. If empty, exports all permission sets.',
-      required: false,
-      summary: 'List of permission sets to export'
-    }),
+
     'health': Flags.boolean({
       char: 'c',
       description: 'Perform Salesforce org health check and generate PDF report with technical debt analysis.',
@@ -46,7 +41,6 @@ export default class WBook extends SfCommand<ExportResult> {
 
     // Debug logging for flags
     this.log(`DEBUG: flags.objects = ${flags.objects ? `'${flags.objects}'` : 'undefined'}`);
-    this.log(`DEBUG: flags['permission-sets'] = ${flags['permission-sets'] !== undefined ? `'${flags['permission-sets']}'` : 'undefined'}`);
     this.log(`DEBUG: flags.health = ${flags.health ? 'true' : 'false'}`);
 
     // Handle health check if requested
@@ -71,9 +65,7 @@ export default class WBook extends SfCommand<ExportResult> {
     const objectProcessor = new ObjectProcessor(connection, this.log.bind(this));
     await objectProcessor.processObjects(flags.objects, workbook);
 
-    // Handle permission set metadata export
-    const permissionSetProcessor = new PermissionSetProcessor(connection, this.log.bind(this));
-    await permissionSetProcessor.processPermissionSets(flags['permission-sets'], workbook);
+
 
     // Ensure Exports directory exists
     const exportDir = path.join(process.cwd(), 'Exports');

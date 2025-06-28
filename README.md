@@ -43,8 +43,13 @@
 
 ### Permission Set Export
 
-1. `sf jz wbook --target-org <org_alias> -p "<csv permission set>"` - Exports permission sets in excel for selected permissions
-1. `sf jz wbook --target-org <org_alias> -p " "` - Exports all permission sets in excel for selected permissions
+1. `sf jz permissionsets --target-org myorg` - Export all custom permission sets
+
+1. `sf jz permissionsets --target-org myorg --permission-sets "Sales_User,Marketing_User"` - Export specific permission sets
+1. `sf jz permissionsets --target-org myorg --include-standard` - Include standard permission sets
+
+1. `sf jz permissionsets --target-org myorg --output-dir "Exports"` - Custom export directory
+1. `sf jz permissionsets --target-org myorg -p "Admin_Access" -d "CustomDir" -s` - Use short flags
 
 ### Call External Service Demo
 
