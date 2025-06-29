@@ -6,7 +6,7 @@ A comprehensive Salesforce DX plugin that provides multiple commands for analyzi
 
 ## Available Commands
 
-This plugin provides 6 main commands:
+This plugin provides 7 main commands:
 
 1. **`jz log`** - Export all debug logs with HTML summary and organized file structure
 2. **`jz logdelete`** - Safely delete debug logs with dry-run and batch processing options
@@ -14,6 +14,7 @@ This plugin provides 6 main commands:
 4. **`jz permissionsets-compare`** - Compare permission sets between two orgs and highlight differences
 5. **`jz health`** - Comprehensive org health check with detailed analysis and reports
 6. **`jz wbook`** - Export Salesforce objects metadata to Excel workbook
+7. **`jz emailtemplates`** - Generate package.xml for all email templates with folder structure
 
 ## Capabilities
 
@@ -29,6 +30,7 @@ This plugin provides 6 main commands:
 - Export objects metadata to Excel workbook with comprehensive field information
 - Export permission sets with object permissions, field permissions, and system permissions
 - Compare permission sets between two orgs to identify configuration differences
+- Generate package.xml for email templates with proper folder structure for deployments
 - Professional Excel formatting with multiple worksheets and proper headers
 
 ### Health Analysis
@@ -156,6 +158,61 @@ sf jz health --target-org myorg -f excel -d "Reports" -s
 - Severity-based issue classification (High, Medium, Low)
 - Organization summary statistics and usage metrics
 - Detailed recommendations for each issue type
+
+### Email Templates Package.xml Generation
+
+**Generate package.xml for all active email templates:**
+
+```bash
+sf jz emailtemplates --target-org myorg
+```
+
+**Include inactive email templates:**
+
+```bash
+sf jz emailtemplates --target-org myorg --include-inactive
+```
+
+**Filter by specific template types:**
+
+```bash
+sf jz emailtemplates --target-org myorg --template-types "html,custom"
+```
+
+**Preview package.xml content without creating files:**
+
+```bash
+sf jz emailtemplates --target-org myorg --dry-run
+```
+
+**Export to custom directory:**
+
+```bash
+sf jz emailtemplates --target-org myorg --output-dir "EmailTemplatePackages"
+```
+
+**Generate package.xml for HTML and Visualforce templates only:**
+
+```bash
+sf jz emailtemplates --target-org prod --template-types "html,visualforce" --output-dir "Deployments"
+```
+
+**Include all templates (active and inactive) with dry-run:**
+
+```bash
+sf jz emailtemplates --target-org sandbox --include-inactive --dry-run
+```
+
+**Features:**
+
+- Generate properly formatted package.xml with fully qualified names (folder/template format)
+- Query all email templates or filter by specific template types (text, html, custom, visualforce)
+- Option to include or exclude inactive email templates
+- Dry-run mode to preview package.xml content without creating files
+- Comprehensive validation of template metadata for deployment compatibility
+- Organized directory structure by org ID with timestamped files
+- Detailed logging and progress reporting with sample template names
+- Professional error handling and summary statistics
 
 ### Permission Sets Export
 
@@ -357,9 +414,15 @@ sf code-analyzer run --output-file "codeAnalyzer/results.csv"
    - Ensure sufficient system memory for large datasets
 
 6. **Permission set comparison issues:**
+
    - Ensure both orgs are accessible and authenticated
    - Some permission differences may be expected between sandbox and production environments
    - Standard permission sets are typically identical and can be excluded with the default behavior
+
+7. **Email templates package.xml issues:**
+   - Ensure templates have valid folder references (unfiled$public is default for unorganized templates)
+   - Use dry-run mode first to verify template names and folder structure
+   - Generated package.xml includes fully qualified names (folder/template) required for deployment
 
 ### Performance Tips
 
@@ -369,6 +432,8 @@ sf code-analyzer run --output-file "codeAnalyzer/results.csv"
 - Use text format for health reports if Excel generation is slow
 - For permission set comparisons, specify individual permission sets rather than comparing all when possible
 - Permission set comparisons use parallel processing automatically for better performance
+- Use dry-run mode with email templates to preview results before generating package.xml files
+- Filter email templates by specific types when you only need certain template categories
 
 ## Important Links
 
