@@ -6,7 +6,7 @@ A comprehensive Salesforce DX plugin that provides multiple commands for analyzi
 
 ## Available Commands
 
-This plugin provides 7 main commands:
+This plugin provides 8 main commands (1 in development):
 
 1. **`jz log`** - Export all debug logs with HTML summary and organized file structure
 2. **`jz logdelete`** - Safely delete debug logs with dry-run and batch processing options
@@ -15,6 +15,7 @@ This plugin provides 7 main commands:
 5. **`jz health`** - Comprehensive org health check with detailed analysis and reports
 6. **`jz wbook`** - Export Salesforce objects metadata to Excel workbook
 7. **`jz emailtemplates`** - Generate package.xml for all email templates with folder structure
+8. **`jz uicompare`** - [🚧 WORK IN PROGRESS] Compare UI layout between two orgs to ensure field consistency
 
 ## Capabilities
 
@@ -32,6 +33,13 @@ This plugin provides 7 main commands:
 - Compare permission sets between two orgs to identify configuration differences
 - Generate package.xml for email templates with proper folder structure for deployments
 - Professional Excel formatting with multiple worksheets and proper headers
+
+### UI Automation & Data Extraction
+
+- 🚧 **WORK IN PROGRESS**: UI comparison between two Salesforce orgs to ensure field layout consistency
+- Intended to compare Lead record UI layout, field sequence, and values between source and target orgs
+- Will support both Lightning Experience and Salesforce Classic interfaces
+- Planned structured JSON export with field comparison results
 
 ### Health Analysis
 
@@ -213,6 +221,58 @@ sf jz emailtemplates --target-org sandbox --include-inactive --dry-run
 - Organized directory structure by org ID with timestamped files
 - Detailed logging and progress reporting with sample template names
 - Professional error handling and summary statistics
+
+### UI Comparison Between Orgs (🚧 Work in Progress)
+
+**⚠️ CURRENT STATUS: DEVELOPMENT IN PROGRESS**
+
+This command is being developed to compare UI layouts between two Salesforce orgs to ensure field consistency, sequence, and layout match between environments (e.g., sandbox vs production).
+
+**Intended Use Case:**
+Compare Lead record UI between source and target orgs to verify:
+
+- Field presence and sequence
+- Section organization
+- Field labels and types
+- UI layout consistency
+
+**Current Implementation Status:**
+
+- ✅ SOQL-based record selection (eliminates list view dependency)
+- ✅ Direct record navigation using record IDs
+- ✅ Robust URL construction for various Salesforce domains
+- ⚠️ Lightning field extraction in development
+- ❌ Org comparison logic not yet implemented
+- ❌ Comparison report generation pending
+
+**Test Command (Single Org):**
+
+```bash
+sf jz uicompare --target-org myorg --dry-run
+```
+
+**Planned Features:**
+
+- **Dual Org Comparison**: Compare UI layout between source and target orgs
+- **Field Sequence Validation**: Ensure fields appear in same order
+- **Layout Consistency Check**: Verify section organization matches
+- **Difference Reporting**: Generate detailed reports of UI discrepancies
+- **Multi-Object Support**: Extend beyond Lead records to other objects
+- **Cross-UI Compatibility**: Support both Lightning and Classic interfaces
+
+**Known Limitations:**
+
+- Currently only attempts single-org data extraction
+- Lightning field extraction needs refinement
+- No comparison logic implemented yet
+- Limited to Lead records in current implementation
+
+**Development Notes:**
+
+- SOQL query successfully finds Lead records
+- Direct navigation working correctly
+- Field extraction requires enhancement for modern Lightning UI
+- Comparison algorithm and reporting engine pending implementation
 
 ### Permission Sets Export
 
@@ -420,9 +480,20 @@ sf code-analyzer run --output-file "codeAnalyzer/results.csv"
    - Standard permission sets are typically identical and can be excluded with the default behavior
 
 7. **Email templates package.xml issues:**
+
    - Ensure templates have valid folder references (unfiled$public is default for unorganized templates)
    - Use dry-run mode first to verify template names and folder structure
    - Generated package.xml includes fully qualified names (folder/template) required for deployment
+
+8. **UI Compare issues (🚧 Work in Progress):**
+   - **⚠️ Feature incomplete**: UI comparison is currently under development and may not produce expected results
+   - **Field extraction**: Lightning UI field extraction needs enhancement - currently returns empty sections
+   - **Single org only**: Command currently only processes one org; dual-org comparison not yet implemented
+   - **Limited object support**: Currently limited to Lead records only
+   - **No comparison output**: Comparison reports and difference analysis not yet available
+   - **SOQL working**: Record selection and navigation working correctly
+   - **Use dry-run**: Use `--dry-run` flag to test command setup without browser automation
+   - **Development status**: Command foundation is solid but field extraction and comparison logic pending
 
 ### Performance Tips
 
@@ -434,6 +505,10 @@ sf code-analyzer run --output-file "codeAnalyzer/results.csv"
 - Permission set comparisons use parallel processing automatically for better performance
 - Use dry-run mode with email templates to preview results before generating package.xml files
 - Filter email templates by specific types when you only need certain template categories
+- UI Compare is currently under development - use dry-run mode for testing
+- SOQL-based record selection eliminates list view filter dependencies (working correctly)
+- Direct record navigation provides reliable access (implemented and working)
+- Field extraction and comparison logic still in development
 
 ## Important Links
 
