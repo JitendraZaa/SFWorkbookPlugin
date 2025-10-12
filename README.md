@@ -6,15 +6,16 @@ A comprehensive Salesforce DX plugin that provides multiple commands for analyzi
 
 ## Available Commands
 
-This plugin provides 7 main commands:
+This plugin provides 8 main commands:
 
 1. **`jz log`** - Export all debug logs with HTML summary and organized file structure
 2. **`jz logdelete`** - Safely delete debug logs with dry-run and batch processing options
 3. **`jz permissionsets`** - Export permission sets metadata to Excel workbook
 4. **`jz permissionsets-compare`** - Compare permission sets between two orgs and highlight differences
-5. **`jz health`** - Comprehensive org health check with detailed analysis and reports
-6. **`jz wbook`** - Export Salesforce objects metadata to Excel workbook
-7. **`jz emailtemplates`** - Generate package.xml for all email templates with folder structure
+5. **`jz user-permissions`** - Analyze all permission sources for a specific user (NEW)
+6. **`jz health`** - Comprehensive org health check with detailed analysis and reports
+7. **`jz wbook`** - Export Salesforce objects metadata to Excel workbook
+8. **`jz emailtemplates`** - Generate package.xml for all email templates with folder structure
 
 ## Capabilities
 
@@ -30,6 +31,7 @@ This plugin provides 7 main commands:
 - Export objects metadata to Excel workbook with comprehensive field information
 - Export permission sets with object permissions, field permissions, and system permissions
 - Compare permission sets between two orgs to identify configuration differences
+- Analyze user permissions from all sources (Profile, Permission Sets, Permission Set Groups)
 - Generate package.xml for email templates with proper folder structure for deployments
 - Professional Excel formatting with multiple worksheets and proper headers
 
@@ -308,6 +310,46 @@ sf jz permissionsets-compare -s dev -t prod -p "Marketing_User,Sales_User" -d "R
 - Parallel processing for optimal performance
 - Smart filtering to exclude identical permission sets from detailed output
 - Automatic categorization of permissions by type for better analysis
+
+### User Permissions Analysis
+
+**Analyze user by username:**
+
+```bash
+sf jz user-permissions --target-org myorg --user john.doe@company.com
+```
+
+**Analyze user by ID:**
+
+```bash
+sf jz user-permissions --target-org myorg --user 005xx000001X8Uz
+```
+
+**Save to custom directory:**
+
+```bash
+sf jz user-permissions --target-org myorg --user john.doe@company.com --output-dir "SecurityAudits"
+```
+
+**Use short flags:**
+
+```bash
+sf jz user-permissions -o myorg -u john.doe@company.com -d "Reports"
+```
+
+**Features:**
+
+- Analyze all permission sources for a specific user (Profile + Permission Sets + Permission Set Groups)
+- Automatically expands Permission Set Groups to show member permission sets
+- Comprehensive permission analysis across all 12+ permission types
+- Generates Excel report with multiple worksheets:
+  - Summary: User info and permission sources count
+  - Permission Sources: List of all sources with assignment dates
+  - Permission Comparison Matrix: One sheet per permission type showing which source grants each permission
+- Identifies effective permissions (union of all sources)
+- Perfect for troubleshooting "Why can user X see this?" questions
+- Useful for security audits and compliance reporting
+- Helps identify redundant permissions across multiple sources
 
 ### Objects Metadata Export
 

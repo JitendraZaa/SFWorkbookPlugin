@@ -10,6 +10,7 @@ Follow below steps:
 1. For every step of the way just give me a high level explanation of what changes you made
 1. Make every task and code change you do as simple as possible. We want to avoid making any massive or complex changes. Every change should impact as little code as possible. Everything is about simplicity.
 1. Finally , update file "Claude/Claude_Notes.md" if any current changes needs to be added, removed or updated at appropriate places in the file. Make sure Claude_Notes.md does not has outdated information and does not has irrelevent information that is no longer applicable.
+1. Make sure to reuse existing code as much as possible. Do not write new code if existing code can be reused without breaking exsisting functionality.
 1. Do not use images or Icon anywhere in code. Icons like cross or green checkbox etc. Using Icons in md files are ok.
 1. Do not use AI as author anywhere in code. Use JZ instead.
 1. Make sure code is properly commented and explains logic.
