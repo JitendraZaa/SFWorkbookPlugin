@@ -289,12 +289,25 @@ sf jz permissionsets-compare -s dev -t prod -p "Marketing_User,Sales_User" -d "R
 
 - Compare permission sets between source and target orgs
 - Identify Added, Removed, and Modified permissions
-- Comprehensive analysis (Object, Field, and System permissions)
+- Comprehensive analysis of all permission types:
+  - Object Permissions (CRUD + View/Modify All)
+  - Field Permissions (Read/Edit)
+  - User Permissions (API Enabled, View Setup, Modify All Data, etc.)
+  - Apex Class Access
+  - Visualforce Page Access
+  - Custom Permissions
+  - Application Visibility
+  - Tab Settings
+  - Flow Access
+  - External Data Source Access
+  - Custom Metadata Type Access
+  - Other System Permissions
 - Generate detailed Excel reports with differences only
 - Individual worksheets for each permission set with differences
 - Summary worksheet with comparison overview
 - Parallel processing for optimal performance
 - Smart filtering to exclude identical permission sets from detailed output
+- Automatic categorization of permissions by type for better analysis
 
 ### Objects Metadata Export
 

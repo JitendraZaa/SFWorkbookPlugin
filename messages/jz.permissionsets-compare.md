@@ -20,7 +20,16 @@ The comparison includes:
 
 - **Object Permissions**: Read, Create, Edit, Delete, View All Records, Modify All Records for each object
 - **Field Permissions**: Read and Edit permissions for each field
-- **System Permissions**: Administrative and functional permissions
+- **User Permissions**: System-level permissions like API Enabled, View Setup, Modify All Data, Manage Users, etc.
+- **Apex Class Access**: Access to Apex classes
+- **Visualforce Page Access**: Access to Visualforce pages
+- **Custom Permissions**: Custom permissions defined in the org
+- **Application Visibility**: Which applications are visible to users
+- **Tab Settings**: Tab visibility settings (Available, Visible, Hidden, etc.)
+- **Flow Access**: Access to specific flows
+- **External Data Source Access**: Access to external data sources
+- **Custom Metadata Type Access**: Access to custom metadata types
+- **System Permissions**: Other administrative and functional permissions
 
 Use this command to:
 

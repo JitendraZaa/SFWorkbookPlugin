@@ -60,6 +60,34 @@ type SystemPermissionRecord = {
   SetupEntityType: string;
 };
 
+type TabSettingRecord = {
+  Name: string;
+  Visibility: string;
+};
+
+type UserPermissionFields = {
+  PermissionsApiEnabled?: boolean;
+  PermissionsViewSetup?: boolean;
+  PermissionsModifyAllData?: boolean;
+  PermissionsManageUsers?: boolean;
+  PermissionsViewAllData?: boolean;
+  PermissionsEditTask?: boolean;
+  PermissionsEditEvent?: boolean;
+  PermissionsExportReport?: boolean;
+  PermissionsImportPersonal?: boolean;
+  PermissionsDataExport?: boolean;
+  PermissionsManageCases?: boolean;
+  PermissionsEditPublicTemplates?: boolean;
+  PermissionsEditReadonlyFields?: boolean;
+  PermissionsRunReports?: boolean;
+  PermissionsTransferAnyEntity?: boolean;
+  PermissionsNewReportBuilder?: boolean;
+  PermissionsActivateContract?: boolean;
+  PermissionsCustomizeApplication?: boolean;
+  PermissionsEditKnowledge?: boolean;
+  PermissionsManageKnowledge?: boolean;
+};
+
 type PermissionData = {
   type: string;
   name: string;
@@ -70,6 +98,9 @@ type PermissionData = {
   viewAll?: string;
   modifyAll?: string;
   permission?: string;
+  visibility?: string; // For tab settings (Available, Visible, Hidden, etc.)
+  enabled?: string; // For user permissions and other boolean permissions
+  category?: string; // For categorizing SetupEntityAccess types (ApexClass, ApexPage, CustomPermission, etc.)
 };
 
 type PermissionSetComparison = {
@@ -475,7 +506,8 @@ export default class PermissionSetsCompare extends SfCommand<PermissionSetsCompa
     targetPerm: PermissionData,
     differences: PermissionDifference[]
   ): void {
-    const properties = ['read', 'create', 'edit', 'delete', 'viewAll', 'modifyAll', 'permission'] as const;
+    // Updated to include new permission property types
+    const properties = ['read', 'create', 'edit', 'delete', 'viewAll', 'modifyAll', 'permission', 'visibility', 'enabled'] as const;
 
     for (const property of properties) {
       const sourceValue = sourcePerm[property] || '';
@@ -560,16 +592,35 @@ export default class PermissionSetsCompare extends SfCommand<PermissionSetsCompa
       }
     });
 
-    // Get system permissions
+    // Get system permissions with enhanced categorization by SetupEntityType
     const systemPerms = await connection.query<SystemPermissionRecord>(
-      `SELECT SetupEntityId, SetupEntityType 
-       FROM SetupEntityAccess 
+      `SELECT SetupEntityId, SetupEntityType
+       FROM SetupEntityAccess
        WHERE ParentId IN (SELECT Id FROM PermissionSet WHERE Name = '${permissionSetName}')`
     );
 
     systemPerms.records.forEach((record) => {
+      // Categorize permission based on SetupEntityType for better reporting
+      let permissionType = 'System Permission';
+
+      if (record.SetupEntityType === 'ApexClass') {
+        permissionType = 'Apex Class Access';
+      } else if (record.SetupEntityType === 'ApexPage') {
+        permissionType = 'Visualforce Page Access';
+      } else if (record.SetupEntityType === 'CustomPermission') {
+        permissionType = 'Custom Permission';
+      } else if (record.SetupEntityType === 'TabSet') {
+        permissionType = 'Application Visibility';
+      } else if (record.SetupEntityType === 'Flow') {
+        permissionType = 'Flow Access';
+      } else if (record.SetupEntityType === 'ExternalDataSource') {
+        permissionType = 'External Data Source Access';
+      } else if (record.SetupEntityType === 'CustomMetadata') {
+        permissionType = 'Custom Metadata Type Access';
+      }
+
       const permission: PermissionData = {
-        type: 'System Permission',
+        type: permissionType,
         name: record.SetupEntityId,
         read: '',
         create: '',
@@ -578,6 +629,7 @@ export default class PermissionSetsCompare extends SfCommand<PermissionSetsCompa
         viewAll: '',
         modifyAll: '',
         permission: 'Yes',
+        category: record.SetupEntityType,
       };
 
       // Only include if it's not an ID-based component
@@ -585,6 +637,107 @@ export default class PermissionSetsCompare extends SfCommand<PermissionSetsCompa
         permissions.push(permission);
       }
     });
+
+    // Get tab settings - queries PermissionSetTabSetting for tab visibility
+    // This requires API version 45.0 or later
+    try {
+      const tabSettings = await connection.query<TabSettingRecord>(
+        `SELECT Name, Visibility
+         FROM PermissionSetTabSetting
+         WHERE ParentId IN (SELECT Id FROM PermissionSet WHERE Name = '${permissionSetName}')`
+      );
+
+      tabSettings.records.forEach((record) => {
+        const permission: PermissionData = {
+          type: 'Tab Setting',
+          name: record.Name,
+          read: '',
+          create: '',
+          edit: '',
+          delete: '',
+          viewAll: '',
+          modifyAll: '',
+          permission: '',
+          visibility: record.Visibility,
+        };
+
+        permissions.push(permission);
+      });
+    } catch (error) {
+      // Tab settings may not be available in all API versions or orgs
+      this.log(`Note: Could not query tab settings: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    // Get user permissions - boolean permission fields directly from PermissionSet
+    // Query the PermissionSet object for user-level permissions
+    try {
+      const userPermsQuery = `
+        SELECT
+          PermissionsApiEnabled, PermissionsViewSetup, PermissionsModifyAllData,
+          PermissionsManageUsers, PermissionsViewAllData, PermissionsEditTask,
+          PermissionsEditEvent, PermissionsExportReport, PermissionsImportPersonal,
+          PermissionsDataExport, PermissionsManageCases, PermissionsEditPublicTemplates,
+          PermissionsEditReadonlyFields, PermissionsRunReports, PermissionsTransferAnyEntity,
+          PermissionsNewReportBuilder, PermissionsActivateContract, PermissionsCustomizeApplication,
+          PermissionsEditKnowledge, PermissionsManageKnowledge
+        FROM PermissionSet
+        WHERE Name = '${permissionSetName}'
+      `;
+
+      const userPermsResult = await connection.query<UserPermissionFields>(userPermsQuery);
+
+      if (userPermsResult.records.length > 0) {
+        const userPerms = userPermsResult.records[0];
+
+        // Define user permission mappings with friendly names
+        const userPermissionMappings: Array<{field: keyof UserPermissionFields; label: string}> = [
+          { field: 'PermissionsApiEnabled', label: 'API Enabled' },
+          { field: 'PermissionsViewSetup', label: 'View Setup and Configuration' },
+          { field: 'PermissionsModifyAllData', label: 'Modify All Data' },
+          { field: 'PermissionsManageUsers', label: 'Manage Users' },
+          { field: 'PermissionsViewAllData', label: 'View All Data' },
+          { field: 'PermissionsEditTask', label: 'Edit Tasks' },
+          { field: 'PermissionsEditEvent', label: 'Edit Events' },
+          { field: 'PermissionsExportReport', label: 'Export Reports' },
+          { field: 'PermissionsImportPersonal', label: 'Import Personal Contacts' },
+          { field: 'PermissionsDataExport', label: 'Weekly Data Export' },
+          { field: 'PermissionsManageCases', label: 'Manage Cases' },
+          { field: 'PermissionsEditPublicTemplates', label: 'Edit Public Templates' },
+          { field: 'PermissionsEditReadonlyFields', label: 'Edit Read Only Fields' },
+          { field: 'PermissionsRunReports', label: 'Run Reports' },
+          { field: 'PermissionsTransferAnyEntity', label: 'Transfer Record' },
+          { field: 'PermissionsNewReportBuilder', label: 'Report Builder' },
+          { field: 'PermissionsActivateContract', label: 'Activate Contracts' },
+          { field: 'PermissionsCustomizeApplication', label: 'Customize Application' },
+          { field: 'PermissionsEditKnowledge', label: 'Edit Knowledge Articles' },
+          { field: 'PermissionsManageKnowledge', label: 'Manage Knowledge' },
+        ];
+
+        // Add each enabled user permission to the permissions array
+        userPermissionMappings.forEach(({ field, label }) => {
+          // Only add if the permission is explicitly set to true
+          if (userPerms[field] === true) {
+            const permission: PermissionData = {
+              type: 'User Permission',
+              name: label,
+              read: '',
+              create: '',
+              edit: '',
+              delete: '',
+              viewAll: '',
+              modifyAll: '',
+              permission: '',
+              enabled: 'Yes',
+            };
+
+            permissions.push(permission);
+          }
+        });
+      }
+    } catch (error) {
+      // User permissions query may fail in some cases
+      this.log(`Note: Could not query user permissions: ${error instanceof Error ? error.message : String(error)}`);
+    }
 
     return permissions;
   }
