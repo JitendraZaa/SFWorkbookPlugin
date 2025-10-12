@@ -346,13 +346,14 @@ export default class UserPermissions extends SfCommand<UserPermissionsResult> {
     const sources: PermissionSource[] = [];
 
     // 1. Get profile as a permission source
+    // Use the actual Profile.Name from User record instead of PermissionSet label (which is often just the ID)
     const profileSource = await this.getProfileAsPermissionSet(connection, user.ProfileId);
     if (profileSource) {
       sources.push({
         type: 'Profile',
         id: profileSource.Id,
         name: profileSource.Name,
-        label: profileSource.Label,
+        label: user.Profile.Name,  // Use actual profile name from user record
       });
     }
 
